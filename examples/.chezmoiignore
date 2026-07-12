@@ -1,0 +1,31 @@
+# === 機密:絕對不納管 ===
+.claude/.credentials.json
+.claude/mcp-needs-auth-cache.json
+**/.credentials*
+**/credentials*
+**/*.key
+**/*.pem
+**/*.token
+
+# === 對話紀錄 / 工作階段狀態 ===
+.claude/projects
+.claude/sessions
+.claude/session-env
+.claude/shell-snapshots
+.claude/file-history
+.claude/history.jsonl
+
+# === 快取 / 機器本地狀態 ===
+.claude/cache
+.claude/paste-cache
+.claude/ide
+.claude/debug
+.claude/backups
+.claude/plugins
+.claude/.last-cleanup
+.claude/.last-update-result.json
+.claude/stats-cache.json
+**/*.log
+
+# === 倉庫說明文件,非要套用的設定 ===
+README.md

@@ -1,0 +1,11 @@
+# 防止個人資料 / 機密誤入公開 repo
+*credentials*
+*.key
+*.pem
+*.token
+.env
+.env.*
+
+# 個人盤點/私人筆記(勿公開)
+claude-env-inventory.md
+*.local.md
