@@ -74,6 +74,29 @@ skill 放在 `~/.claude/skills/`,所以會被 chezmoi 同步、每台機器行�
 - 改完 ~/.claude 設定後,用 dotfiles-sync:先 `status` 顯示 diff,經我確認後才 `push`。未確認前不得 push。
 ```
 
+### 運作機制
+
+skill 內附一支小引擎腳本 [`examples/dotfiles-sync/sync.sh`](./examples/dotfiles-sync/sync.sh),有三個子命令。`SKILL.md` 告訴 Claude 這樣呼叫它:
+
+```
+sh "$HOME/.claude/skills/dotfiles-sync/sync.sh" <子命令>
+```
+
+| 子命令 | 動作 |
+|--------|------|
+| `in` | `chezmoi update` — 拉最新並套用到 `~/.claude` |
+| `status` | `chezmoi re-add` + 顯示暫存的 diff + 掃描金鑰格式字串(不 commit) |
+| `push "<訊息>"` | commit 並 push — Claude **只在你確認後**才執行 |
+
+完整流程:
+
+1. 你改了設定,或 session 開始。
+2. Claude 依 `CLAUDE.md` 的觸發規則,決定使用 `dotfiles-sync` skill。
+3. `SKILL.md` 載入 context,裡面寫著要 Claude 執行 `sh …/sync.sh <子命令>`。
+4. Claude 透過 shell 執行(Windows 走 Git Bash、macOS/Linux 走 `sh`),`$HOME` 在各平台被解析成正確路徑。
+
+skill 不會自己執行腳本 —— 是 Claude 讀了 `SKILL.md` 後去跑那行指令。因為 skill 和腳本都放在 `~/.claude/skills/` 下、會被 chezmoi 同步,所以每台機器都有完全一樣的自動化。
+
 設計說明:同步**不是**在「關掉程式」的瞬間自動發生(那時已沒有 Claude 的回合)。而是在有意義的回合(session 開始、改完設定)執行,且每次 push 前都有人工確認。
 
 ## 安全提醒

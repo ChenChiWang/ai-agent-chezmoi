@@ -75,6 +75,29 @@ The skill itself lives under `~/.claude/skills/`, so it is synced by chezmoi and
   then `push` only after I confirm. Never push without confirmation.
 ```
 
+### How it works
+
+The skill bundles a small engine script, [`examples/dotfiles-sync/sync.sh`](./examples/dotfiles-sync/sync.sh), with three subcommands. `SKILL.md` tells Claude to invoke it like this:
+
+```
+sh "$HOME/.claude/skills/dotfiles-sync/sync.sh" <subcommand>
+```
+
+| Subcommand | What it does |
+|-----------|--------------|
+| `in` | `chezmoi update` — pull the latest and apply to `~/.claude` |
+| `status` | `chezmoi re-add` + show the staged diff + scan for secret-shaped strings (no commit) |
+| `push "<msg>"` | commit and push — Claude runs this **only after you confirm** |
+
+End to end:
+
+1. You edit settings, or a session starts.
+2. Claude follows the trigger in `CLAUDE.md` and decides to use the `dotfiles-sync` skill.
+3. `SKILL.md` loads into context; it instructs Claude to run `sh …/sync.sh <cmd>`.
+4. Claude runs that through its shell (Git Bash on Windows, `sh` on macOS/Linux), where `$HOME` resolves to the correct path on each OS.
+
+The skill doesn't run the script by itself — Claude reads `SKILL.md` and executes the command. Because both the skill and the script live under `~/.claude/skills/`, they're synced by chezmoi, so the exact same automation is available on every machine.
+
 Design note: sync is **not** automatic on process exit — there is no Claude turn at exit. Instead it runs at meaningful turns (session start, after config edits), with a human confirmation before every push.
 
 ## Security notes
