@@ -59,6 +59,24 @@ chezmoi cd && git add -A && git commit -m "update" && git push && exit
 
 > chezmoi is not a real-time sync tool — it's pull/push on demand. For multiple machines, follow the rule: **`chezmoi update` before you start, push when you're done**, and you'll avoid divergence.
 
+## Automated sync (dotfiles-sync skill)
+
+You can let Claude Code handle the sync **in-conversation** instead of typing commands, via a bundled skill ([`examples/dotfiles-sync/`](./examples/dotfiles-sync/)):
+
+- **On session start / when Claude reads the codebase** → it runs `in` (`chezmoi update`) to pull the latest.
+- **After editing `~/.claude` settings / at a milestone** → it runs `status` (shows the diff + scans for secrets), asks you to confirm, and only then runs `push`.
+
+The skill itself lives under `~/.claude/skills/`, so it is synced by chezmoi and works the same on every machine. Add a trigger to your `CLAUDE.md` so Claude invokes it at the right moments — for example:
+
+```markdown
+# Claude Code config sync
+- On session start, use the dotfiles-sync skill's `in` to pull latest settings.
+- After editing ~/.claude settings, use dotfiles-sync: `status` to show the diff,
+  then `push` only after I confirm. Never push without confirmation.
+```
+
+Design note: sync is **not** automatic on process exit — there is no Claude turn at exit. Instead it runs at meaningful turns (session start, after config edits), with a human confirmation before every push.
+
 ## Security notes
 
 - **No token / API key / credentials may ever enter the repo** — scan before every commit.

@@ -167,5 +167,14 @@ chezmoi init --apply git@github.com:USER/dotfiles.git
 推修改:chezmoi re-add && chezmoi cd && git add -A && git commit -m "update" && git push && exit
 ```
 
-穩定使用一段時間後,可再請 Claude Code 加上自動 pull/push 的
-shell 包裝函式(開 claude 前自動拉、結束後自動推)。
+## 進階:自動同步(dotfiles-sync skill)
+
+穩定使用一段時間後,可把同步交給 Claude Code 在對話中自動完成,不必手動記指令。
+做法是加一個 **dotfiles-sync skill**(範例見 `examples/dotfiles-sync/`):
+
+- 引擎 `sync.sh` 提供 `in`(拉最新)、`status`(顯示 diff + secret 掃描)、`push`(commit + 推)三子命令
+- 在 `CLAUDE.md` 加觸發規則:session 開始跑 `in`;改完設定後跑 `status` →**經使用者確認 diff** → `push`
+- skill 本身放 `~/.claude/skills/`,會隨 chezmoi 同步到每台機器
+
+要點:同步發生在「有意義的對話回合」(開場、改完設定),而非進程結束的瞬間;
+且每次 push 前都保留人工確認,守住「commit 前檢查」的安全原則。

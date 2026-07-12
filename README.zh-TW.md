@@ -59,6 +59,23 @@ chezmoi cd && git add -A && git commit -m "update" && git push && exit   # 推�
 
 > chezmoi 不是即時同步工具,是「按需 pull / push」。多機使用請遵守**開工前先 `chezmoi update`、收工後 push**,即可避免分岔。
 
+## 自動同步(dotfiles-sync skill)
+
+可以讓 Claude Code **在對話中**自動完成同步,不必手動打指令。做法是一個內建 skill([`examples/dotfiles-sync/`](./examples/dotfiles-sync/)):
+
+- **Session 開始 / Claude 開始讀 codebase 時** → 執行 `in`(`chezmoi update`)拉最新。
+- **改完 `~/.claude` 設定 / 工作告一段落時** → 執行 `status`(顯示 diff + secret 掃描),**經你確認後**才 `push`。
+
+skill 放在 `~/.claude/skills/`,所以會被 chezmoi 同步、每台機器行為一致。在你的 `CLAUDE.md` 加一段觸發規則,讓 Claude 在對的時機呼叫,例如:
+
+```markdown
+# Claude Code 設定同步
+- session 開始時,用 dotfiles-sync skill 的 `in` 拉取最新設定。
+- 改完 ~/.claude 設定後,用 dotfiles-sync:先 `status` 顯示 diff,經我確認後才 `push`。未確認前不得 push。
+```
+
+設計說明:同步**不是**在「關掉程式」的瞬間自動發生(那時已沒有 Claude 的回合)。而是在有意義的回合(session 開始、改完設定)執行,且每次 push 前都有人工確認。
+
 ## 安全提醒
 
 - **任何 token / API key / credentials 都不得進 repo**,commit 前務必掃描
