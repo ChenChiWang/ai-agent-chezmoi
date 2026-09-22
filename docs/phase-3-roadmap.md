@@ -1,6 +1,42 @@
 # Phase 3 migration roadmap
 
-## Current gate: public Phase 2.6 only
+## Current gate: public Phase 2.7 only; Phase 3 remains stopped
+
+The user classified the production layout mismatch as **Phase 2.7 Production
+Layout Compatibility**, authorizing changes and isolated validation in this public
+repository only. No private relocation/modification, Phase 3 continuation, commit,
+or push is authorized in this task. Complete review and stop. See
+[production-layout.md](production-layout.md) for boundaries and verification.
+Phase 2.7 review has passed within its isolated-fixture scope; work is stopped
+pending user acceptance and explicit continuation, without rerunning production
+preflight in this public-only task.
+The mandatory 3D gate and separate 3E–3H authorization requirements remain intact.
+
+## Historical Phase 3 preflight: source/destination layout mismatch
+
+On 2026-09-22 the user accepted public baseline
+`50fabd55bd2d6d8865501ce739184937d3d0560b` and explicitly authorized 3A–3D.
+Read-only production preflight found the expected clean legacy branch, six-skill
+layout/frontmatter, settings schema, and matching source/deployed legacy bytes.
+The initial missing scanner dependency was resolved under explicit user approval:
+the checksum-verified Gitleaks 8.30.1 binary is installed in the user's local bin
+directory and resolves on login zsh, interactive zsh, and inherited-PATH sh.
+No scanner requirement was weakened and no shell configuration was changed.
+
+The repeated preflight then found a separate production/reference mismatch:
+the actual chezmoi source is inside the destination home, whereas `Engine.__init__`
+in `sync-write.py` rejects either root containing the other. Migration initialization
+returns `INVALID_SOURCE` (65) before creating a baseline. The synthetic migration
+fixtures use sibling source/destination directories and do not cover this layout.
+The backup contract also forbids a backup under destination, which must be accounted
+for when designing support for normal home-contained source installations.
+
+Per the immediate-stop requirement, no source relocation, engine modification,
+baseline package, migration, or Claude deployment was performed. 3A is incomplete;
+3B–3D are unexecuted. Review and fixture-test support for the production directory
+relationship before resuming migration. 3E–3H remain unauthorized.
+
+## Historical gate: public Phase 2.6 only
 
 The user subsequently authorized Phase 2.6 Migration Readiness to resolve the
 reference gaps below, **in the public repository and isolated fixtures only**.
@@ -31,7 +67,7 @@ This supersedes the earlier blanket migration pause, but not the phase gates bel
 
 | Phase | Work | Required evidence / gate | Current status |
 | --- | --- | --- | --- |
-| 3A | Establish a reversible private baseline and rollback plan | Verified private source identity and Git state; scoped source/deployed backup manifest with existence, types, modes and hashes; preserve pre-existing edits; verify backup restoration in isolation | Not executed; await 2.6 acceptance and continuation |
+| 3A | Establish a reversible private baseline and rollback plan | Verified private source identity and Git state; scoped source/deployed backup manifest with existence, types, modes and hashes; preserve pre-existing edits; verify backup restoration in isolation | Incomplete; production preflight stopped; await 2.7 acceptance and explicit continuation |
 | 3B | Migrate inventory mapping into Shared Core | Preserve existing user-rule meaning; retain Claude-only settings; move existing portable skills to their shared authority; avoid duplicate plain/template targets | Not started |
 | 3C | Switch Claude to Shared Core + v2 dotfiles-sync | Deploy only reviewed Claude/shared outputs; preserve settings; replace legacy callers safely without fallback or automatic session-start writes; no Codex deployment | Not started |
 | 3D | Claude regression gate | Verify CLAUDE.md, every pre-existing skill, sync entrypoint and scanner scope; isolated sync tests; scoped chezmoi behavior/idempotence; settings preservation; rollback evidence; report actual product-loading checks separately from rendering | **Mandatory stop; not run** |

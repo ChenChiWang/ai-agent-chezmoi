@@ -26,8 +26,10 @@ class MigrationTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name).resolve()
         self.src, self.dst = self.root / 'legacy 中文 source', self.root / 'home 中文 destination'
-        self.src.mkdir()
+        if getattr(self, 'nested_layout', False):
+            self.src = self.dst / '.local/share/chezmoi'
         self.dst.mkdir()
+        self.src.mkdir(parents=True)
         (self.root / 'tool-home').mkdir()
         self.env = dict(PATH=os.environ['PATH'], HOME=str(self.root / 'tool-home'), LC_ALL='C',
                         GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null', GIT_TERMINAL_PROMPT='0',

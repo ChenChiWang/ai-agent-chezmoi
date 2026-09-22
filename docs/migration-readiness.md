@@ -5,6 +5,11 @@ migration. The private source is never a test input. Phase 2.6 review must finis
 and stop; it does not authorize Phase 3A or lift the mandatory Phase 3D gate.
 See the persistent [Phase 3 roadmap](phase-3-roadmap.md).
 
+Phase 2.7 adds [production layout compatibility](production-layout.md), including
+isolated tests with source at `destination/.local/share/chezmoi`. It does not
+authorize production migration. Backup and plan storage must still be external
+to both roots; when destination is HOME, storage under HOME is not accepted.
+
 ## 2.6A: staged profiles
 
 Every `status`, `plan`, `in` and `push` accepts an explicit profile:

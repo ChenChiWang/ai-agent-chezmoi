@@ -30,6 +30,10 @@ Phase 2.6 adds staged `claude` / `claude-codex` profiles, all six shared skills,
 and an offline legacy conversion with retained rollback. See
 [migration readiness and fixture acceptance](./docs/migration-readiness.md).
 
+Phase 2.7 supports source under destination HOME, including
+`$HOME/.local/share/chezmoi`, with bounded managed paths and reserved deployment
+regions. See [production layout compatibility](./docs/production-layout.md).
+
 The remaining instructions describe **legacy v1**. Its `status` changes source
 and index, prints diff before scanning, and its `push` does not enforce scanning.
 The v1 script is preserved for compatibility; v2 does not repair its safety gaps.

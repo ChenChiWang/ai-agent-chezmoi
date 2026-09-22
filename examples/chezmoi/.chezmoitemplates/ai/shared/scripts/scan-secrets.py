@@ -91,6 +91,68 @@ LOCATIONS = frozenset(
     + [scope + '/' + p for scope in ('target', 'render') for p in set(TARGET_FILES + LEGACY_TARGETS)]
 )
 
+# These deployment namespaces are reserved even in a staged Claude-only profile.
+# Checking their lexical relationship does not inspect inactive product files.
+TARGET_REGIONS = ('.claude', '.codex', '.agents', '.config/ai-agent')
+
+
+def overlaps(left, right):
+    return left == right or left in right.parents or right in left.parents
+
+
+def validate_layout(source, destination, profile, legacy=False):
+    """Validate roots and only fixed managed paths; never enumerate destination.
+
+    Explicit root aliases (including macOS /tmp) are canonicalized. Within those
+    roots, symlink components, non-directory parents and hard-linked payloads
+    are refused. Source may be below destination only outside target namespaces.
+    """
+    src, dst = Path(source).resolve(), Path(destination).resolve()
+    if not src.is_dir() or not dst.is_dir() or src == dst or src in dst.parents:
+        raise ValueError('invalid roots')
+    # All engines allocate scratch state beneath this fixed OS temporary root.
+    # A selected root must not encompass that allocation area (e.g. HOME=/tmp).
+    temporary_parent = Path('/tmp').resolve()
+    if any(root == temporary_parent or root in temporary_parent.parents for root in (src, dst)):
+        raise ValueError('root contains engine scratch area')
+    if any(overlaps(src, dst / region) for region in TARGET_REGIONS):
+        raise ValueError('source overlaps deployment namespace')
+    files, targets = mapping(profile)
+    paths = [(src, p) for p in set(files) | (set(LEGACY_FILES) if legacy else set())]
+    paths += [(dst, p) for p in targets]
+    for root, relative in paths:
+        rel = Path(relative)
+        if rel.is_absolute() or '..' in rel.parts or str(rel) == '.':
+            raise ValueError('invalid mapping')
+        path = root / rel
+        for part in (path, *path.parents):
+            if part == root:
+                break
+            if part.is_symlink():
+                raise ValueError('managed symlink')
+            if part.exists():
+                info = part.stat()
+                if part != path and not stat.S_ISDIR(info.st_mode):
+                    raise ValueError('invalid managed parent')
+                if part == path and (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1):
+                    raise ValueError('invalid managed file')
+    # Git reads are a separate, explicit metadata scope. Reject indirection here
+    # too, so shell status cannot follow metadata links that writes would refuse.
+    git_dir = src / '.git'
+    if git_dir.is_symlink() or not git_dir.is_dir():
+        raise ValueError('regular Git checkout required')
+    def walk_error(error):
+        raise error
+    for parent, dirs, files in os.walk(git_dir, onerror=walk_error):
+        if any((Path(parent) / name).is_symlink() for name in dirs + files):
+            raise ValueError('Git metadata symlink')
+    # A regular file can redirect object reads too; do not follow alternate
+    # object stores or another Git directory in any entrypoint, including status.
+    for name in ('commondir', 'objects/info/alternates'):
+        if (git_dir / name).exists():
+            raise ValueError('Git metadata indirection')
+    return src, dst
+
 
 class ScanError(Exception):
     pass
@@ -216,6 +278,12 @@ def scan(snapshot):
 
 def main():
     os.umask(0o077)
+    if len(sys.argv) == 5 and sys.argv[1] == '--validate-layout':
+        try:
+            validate_layout(sys.argv[2], sys.argv[3], sys.argv[4])
+        except (ValueError, OSError):
+            return 65
+        return 0
     if len(sys.argv) == 4 and sys.argv[1] == '--schema':
         files, targets = mapping(sys.argv[2])
         require(sys.argv[3] in ('source', 'target'))

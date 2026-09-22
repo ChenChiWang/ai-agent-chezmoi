@@ -27,6 +27,10 @@ Phase 2.6 新增 `claude`／`claude-codex` 分階段 profile、完整六個 shar
 以及保留 rollback 的離線 legacy conversion。請閱讀
 [migration readiness 與隔離測試範圍](./docs/migration-readiness.md)。
 
+Phase 2.7 支援 source 位於 destination HOME 下（例如 `$HOME/.local/share/chezmoi`），
+並保留明確 managed paths 與部署區域隔離。詳見
+[production layout 安全邊界](./docs/production-layout.md)。
+
 以下章節描述 **legacy v1**：它的 `status` 會改 source/index、先輸出 diff 才掃描，`push` 不強制掃描。
 舊引擎保留相容性，新增 v2 不代表已修復 v1 的安全缺口。
 

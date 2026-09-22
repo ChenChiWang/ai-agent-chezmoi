@@ -53,8 +53,11 @@ sh examples/chezmoi/.chezmoitemplates/ai/shared/scripts/sync.sh status \
   --source "$fixture_source" --destination "$fixture_destination"
 ```
 
-All arguments must be absolute paths. Source and destination must exist and must
-not overlap. The source must be the root of a regular Git checkout containing
+All arguments must be absolute paths. Source and destination must exist. Phase 2.7
+allows source beneath destination (for example `$HOME/.local/share/chezmoi`) only
+outside reserved deployment namespaces. Equal roots and destination inside source
+remain forbidden. See [production layout boundaries](production-layout.md).
+The source must be the root of a regular Git checkout containing
 the complete v2 layout; linked Git worktrees are not supported yet. This engine
 does not call `chezmoi source-path` or default to the current project or private
 source. Source identity here means the explicitly supplied, validated checkout;
@@ -133,7 +136,7 @@ or historical secrets. Unknown paths are outside the engine's fixed scope.
 | `OK` | 0 | Scoped source changed; deployed output matches render |
 | `DRIFT` | 2 | Generated destination differs; no apply performed |
 | `USAGE`, `UNSUPPORTED` | 64 | Bad status invocation (write result codes are documented separately) |
-| `INVALID_SOURCE`, `UNSUPPORTED_TEMPLATE`, `UNSUPPORTED_HOME`, `BLOCKED_OVERRIDE` | 65 | Unsupported or unsafe input/layout |
+| `INVALID_LAYOUT`, `INVALID_SOURCE`, `UNSUPPORTED_TEMPLATE`, `UNSUPPORTED_HOME`, `BLOCKED_OVERRIDE` | 65 | Unsupported or unsafe input/layout |
 | `BLOCKED_CONFLICT` | 66 | Scoped index contains unmerged entries |
 | `BLOCKED_SECRET` | 67 | Scanner found a match; no normal report |
 | `MISSING_DEPENDENCY` | 69 | Required command or executable scanner missing |

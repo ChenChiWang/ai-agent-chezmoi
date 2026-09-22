@@ -1,6 +1,54 @@
 # Implementation status
 
-## Current acceptance: Phase 2.6 Migration Readiness (2026-09-22)
+## Phase 2.7 Production Layout Compatibility (2026-09-22)
+
+- Public baseline: `50fabd55bd2d6d8865501ce739184937d3d0560b`. The user
+  authorizes public implementation, isolated tests and review only. Prior
+  uncommitted preflight documentation is retained as historical evidence.
+- Centralized layout validation now allows source under destination HOME outside
+  reserved deployment regions, and rejects equal/reversed roots, managed symlink
+  and hard-link escapes, unsafe parent types, Git metadata symlinks, and roots
+  encompassing the scratch allocation area. Validation precedes source locking.
+- Source aliases are canonicalized; managed descendants are not followed through
+  symlinks. Migration alias discovery prunes unrelated source trees. Destination
+  payload access remains the static profile mapping; no HOME tree walk occurs.
+- Plans/backups/local test remotes remain outside both roots. Scanner version,
+  approval hashes, legacy conversion mapping, historical scans and guarded
+  rollback requirements are unchanged. No alternate scanner bypass was added.
+- Added `tests/test-layout.py`, reusing the complete migration/write contracts at
+  `<fixture HOME>/.local/share/chezmoi` plus boundary, manifest, sentinel and
+  traversal cases. All remotes and deployments are disposable local fixtures.
+- Review found and corrected status's invalid-profile error precedence (retains
+  exit 64); unsafe managed paths now fail earlier with `INVALID_LAYOUT` / 65.
+  The status symlink assertion was updated to this explicit diagnostic contract.
+- Review result: **PASS for the public macOS isolated-fixture contract**. Reviewed
+  the shared root validator, status/write/migration entrypoints, bounded alias
+  traversal, saved-manifest path admission and existing rollback mutations.
+  No known blocking finding remains in this scope. This is not production 3D.
+- `tests/test-layout.py`: 61 distinct scenarios passed: the 58-case full run
+  finished in 199.965s, followed by the three added Git symlink/alternate-store and
+  invalid-profile cases. After final review changes, those three plus the full
+  nested 3A–3D/rollback scenario passed together (4 tests, 9.127s). The source/HOME
+  no-traversal scenario was also rerun after shared validation changes.
+- Existing sibling-layout regressions: migration 24/24 (104.150s), write 27/27
+  (94.360s), pinned real scanner 10/10 (33.684s), offline status 6/6 (latest rerun
+  6.398s). Render/status shell suites passed; status was rerun after the diagnostic
+  assertion and invalid-profile precedence fixes.
+- Python AST/shell syntax, both profile mappings and wrappers/literal rendering,
+  new-file LF/whitespace, `git diff --check`, and unchanged legacy v1 engine checks
+  passed. macOS temporary-directory lookup warnings in cleared test environments
+  did not affect fixture isolation or results.
+- Limits: no production Claude loading/statusLine/chezmoi regression or private
+  inventory classification was attempted. Production needs a durable owner-private
+  backup/plan location outside HOME. Existing cooperating-writer and recoverable
+  transaction assumptions remain; no hostile concurrent filesystem-race guarantee
+  or new platform/SSH/HTTPS validation is claimed. Stop for user acceptance.
+- No private source read, relocation, mutation, production deployment, repository
+  commit/push or Phase 3 execution occurred in Phase 2.7. See
+  [production-layout.md](production-layout.md) and the mandatory
+  [Phase 3 gate](phase-3-roadmap.md).
+
+## Accepted Phase 2.6 Migration Readiness (2026-09-22)
 
 - Baseline: public `03bbd09e0674cf5494dc4a44ee37438b77ce3533`; previous uncommitted
   Phase 3 roadmap/status changes preserved. This task authorizes public code/tests
@@ -313,3 +361,32 @@ and outbound-history verification, not automatic migration.
 - Final acceptance is limited to the Phase 1 template/isolated-test scope. Real
   product loading, other platforms, outbound history, shared mutation locks,
   approval plans, write workflows and private migration remain unverified/deferred.
+
+# Phase 3 authorized preflight stop — 2026-09-22
+
+- User accepted public baseline `50fabd55bd2d6d8865501ce739184937d3d0560b`
+  and authorized only 3A–3D, with an immediate stop on production mismatch or
+  unreliable regression validation.
+- Read-only checks passed: expected private remote identity, clean `main`, six
+  skill directories and payload/frontmatter schema, Claude-only settings keys,
+  all nine legacy deployed files matching source bytes, settings mode equality,
+  and no checked v2 source/output collisions.
+- Initial dependency block resolved with subsequent explicit approval: installed
+  Gitleaks 8.30.1 in the user's local bin directory from the archive matching the
+  SHA-256 recorded in `secret-scanner.md`. Installed binary SHA-256:
+  `ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f`.
+  Login zsh, interactive zsh, and inherited-PATH sh resolve the installed binary
+  and report exactly 8.30.1. No shell configuration or scanner requirement changed.
+  `python3 tests/test-scanner.py` passed all 10 tests using the installed binary
+  through the ordinary PATH, including real detections, fail-closed behavior,
+  redaction, and engine integration (27.843 seconds; isolated synthetic inputs).
+- New blocking mismatch: real source is contained by destination home. The
+  accepted engine explicitly rejects nested roots; read-only migration engine
+  initialization returns `INVALID_SOURCE` (65). Fixtures use sibling roots.
+  Stopped without relocating source or changing the reference implementation.
+- Stopped before baseline creation or conversion. No private source, Git state,
+  Claude settings/skills/output, or Codex deployment was changed. No private
+  commit/push occurred. There is no migration diff or migration rollback to run.
+- 3A incomplete; 3B/3C/3D not executed; production Claude loading, statusLine,
+  chezmoi behavior, sync/scanning and rollback restoration remain unverified.
+  This is not a 3D PASS. See [phase-3-roadmap.md](phase-3-roadmap.md).

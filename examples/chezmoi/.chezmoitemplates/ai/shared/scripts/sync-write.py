@@ -52,6 +52,14 @@ def safe(path):
         need(not p.is_symlink(), 'BLOCKED_SYMLINK')
 
 
+def layout(args, legacy=False):
+    try:
+        return api.validate_layout(args.source, args.destination,
+                                   getattr(args, 'profile', 'claude-codex'), legacy)
+    except (ValueError, OSError):
+        raise Block(65, 'INVALID_LAYOUT') from None
+
+
 def read(path, missing=False):
     safe(path)
     if missing and not path.exists():
@@ -102,9 +110,7 @@ class Engine:
         self.profile = getattr(args, 'profile', 'claude-codex')
         self.files, self.targets = api.mapping(self.profile)
         self.offline = getattr(args, 'offline', False)
-        self.src, self.dst = Path(args.source).resolve(), Path(args.destination).resolve()
-        need(self.src.is_dir() and self.dst.is_dir())
-        need(self.src != self.dst and self.src not in self.dst.parents and self.dst not in self.src.parents)
+        self.src, self.dst = layout(args)
         self.gd = self.src / '.git'
         safe(self.gd)
         need(self.gd.is_dir(), 'UNSUPPORTED_WORKTREE')
@@ -118,9 +124,6 @@ class Engine:
             safe(self.dst / '.codex/AGENTS.override.md')
             need(not (self.dst / '.codex/AGENTS.override.md').exists(), 'BLOCKED_OVERRIDE')
         # Refuse indirection/special repositories before invoking Git against them.
-        for parent, dirs, files in os.walk(self.gd):
-            for name in dirs + files:
-                safe(Path(parent) / name)
         for name in ('shallow', 'commondir', 'objects/info/alternates', 'info/grafts'):
             need(not (self.gd / name).exists(), 'UNSUPPORTED_REPOSITORY')
         self.env = dict(PATH=os.environ.get('PATH', os.defpath), HOME=str(tmp / 'home'),
@@ -597,6 +600,7 @@ def lock(source):
 def main():
     os.umask(0o077)
     args = arguments()
+    layout(args)  # Reject unsafe paths before even creating a source lock.
     plan_path = Path(args.plan)
     safe(plan_path)
     for root in (Path(args.source).resolve(), Path(args.destination).resolve()):

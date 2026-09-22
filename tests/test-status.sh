@@ -139,7 +139,7 @@ isolated env CODEX_HOME="$test_root/custom-codex" sh "$engine" status \
 mv "$dst/.claude/CLAUDE.md" "$test_root/saved-instructions"
 ln -s "$test_root/saved-instructions" "$dst/.claude/CLAUDE.md"
 run_status 65
-assert_contains "$test_root/output" 'target symlink'
+assert_contains "$test_root/output" 'INVALID_LAYOUT:'
 rm "$dst/.claude/CLAUDE.md"
 mv "$test_root/saved-instructions" "$dst/.claude/CLAUDE.md"
 printf 'override\n' > "$dst/.codex/AGENTS.override.md"

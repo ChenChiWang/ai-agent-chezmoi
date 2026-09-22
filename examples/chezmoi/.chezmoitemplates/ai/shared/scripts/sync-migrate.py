@@ -102,8 +102,7 @@ class Migration(w.Engine):
                       'empty_', 'exact_', 'create_', 'modify_', 'remove_', 'symlink_')
         managed = set(a.TARGET_FILES)
         for parent, dirs, files in os.walk(self.src):
-            if Path(parent) == self.src:
-                dirs[:] = [d for d in dirs if d not in ('.git', '.chezmoitemplates')]
+            descend = []
             for name in dirs + files:
                 path = Path(parent) / name
                 rel = path.relative_to(self.src).as_posix()
@@ -119,10 +118,14 @@ class Migration(w.Engine):
                     target = target[:-5]
                 if target in managed:
                     w.need(rel in allowed, 'BLOCKED_SOURCE_ALIAS', 66)
-                if path.is_dir() and any(t.startswith(target + '/') for t in managed):
+                if any(t.startswith(target + '/') for t in managed) and path.is_dir():
                     w.safe(path)
                     w.need(not any(part.startswith(attributes) for part in rel.split('/')),
                            'BLOCKED_SOURCE_ALIAS', 66)
+                    descend.append(name)
+            # Only inspect names along mapped deployment prefixes. Never walk
+            # unrelated source subtrees, Git metadata, or any destination tree.
+            dirs[:] = descend
 
     def split_rules(self, old):
         path = Path(self.a.rules_map)
@@ -436,6 +439,7 @@ def main():
         w.need(args.mode and args.reference and (args.mode != 'legacy' or args.rules_map), 'USAGE: conversion inputs required', 64)
     else:
         w.need(args.approve and re.fullmatch('[0-9a-f]{64}', args.approve), 'USAGE: --approve MIGRATION_ID required', 64)
+    w.layout(args, legacy=True)  # Includes removed legacy paths, before locking.
     with tempfile.TemporaryDirectory(prefix='ai-agent-migration-', dir='/tmp') as tmp:
         with w.lock(Path(args.source).resolve()):
             engine = Migration(args, Path(tmp))

@@ -53,10 +53,9 @@ safe_path() {
 [ -d "$src" ] && [ -d "$dst" ] || fail 65 'INVALID_SOURCE: source and destination must exist'
 src=$(cd "$src" && pwd -P)
 dst=$(cd "$dst" && pwd -P)
-case "$dst/" in "$src/"*) fail 65 'INVALID_SOURCE: overlapping roots' ;; esac
-case "$src/" in "$dst/"*) fail 65 'INVALID_SOURCE: overlapping roots' ;; esac
-[ -d "$src/.git" ] && [ ! -L "$src/.git" ] || fail 65 'INVALID_SOURCE: regular Git checkout required; worktrees unsupported'
 case "$profile" in claude|claude-codex) ;; *) fail 64 'USAGE: invalid profile' ;; esac
+python3 "$formatter" --validate-layout "$src" "$dst" "$profile" 2>/dev/null || fail 65 'INVALID_LAYOUT: roots or managed paths'
+[ -d "$src/.git" ] && [ ! -L "$src/.git" ] || fail 65 'INVALID_SOURCE: regular Git checkout required; worktrees unsupported'
 [ -z "${CLAUDE_CONFIG_DIR:-}" ] || [ "$CLAUDE_CONFIG_DIR" = "$dst/.claude" ] || fail 65 'UNSUPPORTED_HOME: custom CLAUDE_CONFIG_DIR'
 [ -z "${AI_AGENT_HOME:-}" ] || [ "$AI_AGENT_HOME" = "$dst/.config/ai-agent" ] || fail 65 'UNSUPPORTED_HOME: custom AI_AGENT_HOME'
 if [ "$profile" = claude-codex ]; then

@@ -24,6 +24,8 @@ class WriteTests(unittest.TestCase):
         self.root = Path(self.tmp.name).resolve()
         self.src = self.root / 'source 中文 space'
         self.dst = self.root / 'destination 中文 space'
+        if getattr(self, 'nested_layout', False):
+            self.src = self.dst / '.local/share/chezmoi'
         self.remote = self.root / 'remote.git'
         self.home = self.root / 'home'
         self.home.mkdir()

@@ -61,7 +61,10 @@ Supply `--author-name`, `--author-email` and optionally `--message` to **both**
 commands when a commit is needed. Identity is explicit: no global Git identity is
 read. The default message is `chore: sync shared agent configuration`.
 
-A plan is a new owner-only JSON file outside source and destination. Its parent
+A plan is a new owner-only JSON file outside source and destination. Nested source
+under HOME is supported under the [Phase 2.7 layout boundary](production-layout.md);
+this does not permit plans, backups, or local bare remotes inside destination HOME.
+Its parent
 must already exist. Existing plan files are not overwritten. It records:
 
 - Canonical roots, exact remote URL, branch and base/remote commit IDs.
