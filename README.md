@@ -9,18 +9,20 @@ The intended scope is portable settings and capabilities. Ignore rules are defen
 ## Experimental Claude Code + Codex shared templates (v2)
 
 [`examples/chezmoi/`](./examples/chezmoi/) adds one shared source for instructions,
-skills and a neutral engine. Phase 1 supports **read-only `status` only**; `plan`,
-`in` and `push` fail explicitly. It requires explicit source/destination paths
+skills and a neutral engine. v2 supports **offline `status`, approval plans, safe
+`in`, and scoped `push`**. It requires explicit source/destination paths
 and uses the bundled scanner adapter with **Gitleaks 8.30.1** on PATH and Python 3.9+.
 Findings report only validated paths, rule IDs and line numbers. See the
 [scanner contract and tests](./docs/secret-scanner.md).
 
 Read [`docs/migration-v2.md`](./docs/migration-v2.md) before using it. This is an
-isolated development template, not a drop-in replacement for the existing skill.
+development template; private migration and legacy caller cutover remain paused.
+Read the [sync contract, approval and recovery guide](./docs/sync-v2.md).
 Do not run `chezmoi init --apply` against this public repository or copy it over
 your current agent configuration. Tests: `sh tests/test-render.sh` and
 `sh tests/test-status.sh`; real scanner tests: `python3 tests/test-scanner.py`
-and offline regression: `python3 tests/test-offline-status.py`
+and offline regression: `python3 tests/test-offline-status.py`; write/history tests:
+`python3 tests/test-write.py` (real commits/pushes only in temporary local fixtures)
 (Git with `--no-lazy-fetch` support, chezmoi, POSIX sh, Python 3.9+ and pinned Gitleaks required).
 
 The remaining instructions describe **legacy v1**. Its `status` changes source

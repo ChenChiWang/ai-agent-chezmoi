@@ -1,5 +1,77 @@
 # Implementation status
 
+## Current acceptance: v2 safe sync engine (2026-09-22)
+
+- Baseline: `0668304`, public `ai-agent-chezmoi`, clean working tree at task start.
+- Inventory accepted; private migration remains paused. This section supersedes
+  the historical Phase 1 stop point and unsupported-command notes below.
+- Added shared `sync-write.py`, its generated wrapper, and `tests/test-write.py`.
+  `sync.sh` dispatches `plan`, `in`, `push`; offline status remains intact.
+  Scope is now 19 source files / eight generated outputs. Scanner, shell and Python
+  mappings agree. One shared skill routes both agents through the same engine.
+- Implemented owner-only approval plans (SHA-256 ID / one-hour expiry), canonical
+  source lock, quarantined fetch/index/objects, scoped FF incoming changes,
+  generated drift protection, raw-byte tree construction and full outbound commit
+  inspection (including intermediate snapshots and commit metadata).
+- Staged changes and special index flags are refused intact. Unknown/out-of-scope,
+  empty or merge commits block synchronization. No implicit source discovery,
+  unrestricted re-add/apply, automatic staging, stash/reset/rebase or source hooks.
+- Approval binds source/destination, HEAD/ref/index/config, exact remote/branch,
+  candidates/outputs, identity/message and trusted helper/scanner files. Execution
+  rebuilds, re-scans and compares; local state is rechecked before mutation.
+- Push plans explicitly include generated-output deployment. The approved local
+  commit/index/output state is retained on remote rejection; retry requires a new
+  plan. This prevents a push from leaving its own deployment behind its new HEAD.
+- Push uses one explicit refspec and an exact expected-OID lease, after an independent
+  ancestry proof. No history rewriting is permitted. Source refs use old-OID CAS;
+  ordinary Git writers also encounter the transaction's index.lock.
+- File/index transactions preserve old/new bytes, modes and hashes in a local Git
+  journal. Normal failures safely roll back; concurrent edits are preserved and
+  uncertain recovery keeps the journal. SIGKILL/power-loss recovery is manual and
+  documented, with no automatic stale-lock deletion or reset.
+
+### Verification and review
+
+- `tests/test-write.py`: final full run 26/26 passed (53.262 seconds).
+  Real local fixture commits/bare-remotes cover incoming, source-only apply, scoped
+  publication, no-op, stale/tampered/expired plans, staged work, drift, secrets in
+  removed history/messages, unrelated history, remote rejection/retry, remote and
+  source races, scanner failure, source hooks/filters, lock aliases, paths with
+  spaces/Chinese, deployed-engine plan invariants, rollback and concurrent-edit
+  recovery. Real Gitleaks covers clean publication and removed historical secrets.
+- `sh tests/test-render.sh` and `sh tests/test-status.sh`: passed, including the
+  new helper/output and actual chezmoi equivalence for the Python renderer.
+- `python3 tests/test-offline-status.py`: 6/6 passed, preserving no-lazy-fetch.
+- `PATH=/private/tmp/ai-agent-gitleaks-8.30.1:$PATH python3 tests/test-scanner.py`:
+  10/10 passed with the existing pinned binary; no dependency installed.
+- Shell syntax, skill YAML (Ruby safe-load), whitespace and legacy-engine unchanged
+  checks passed. Skill Creator quick_validate remains unavailable (missing PyYAML);
+  no package installation attempted.
+- Review: no known blocking finding in this fixed-profile/macOS/local-transport
+  acceptance scope. Reviewed candidate/tree integrity, staged-state preservation,
+  network isolation, historical leaks, approval freshness, transaction failure and
+  retry behavior. Shared Core + thin Claude/Codex adapters is preserved.
+
+### Limits / stop point
+
+- This replaces legacy **operations for a migrated v2 profile**, not arbitrary
+  existing private layouts. Inventory-to-schema mapping, first deployment, backups,
+  legacy wrapper/trigger cutover and product loading are not done or authorized here.
+- Authenticated HTTPS helpers, SCP aliases, linked worktrees, SHA-256/shallow repos,
+  new/missing/deleted mappings, merge histories and empty remotes are unsupported.
+  Private remotes can use explicit SSH URLs with an existing agent/known_hosts;
+  actual SSH/HTTPS and Linux/Windows/WSL behavior remain unverified.
+- Locks protect cooperative callers. Manual same-user writers can bypass them;
+  multi-file replacement is recoverable, not an atomic filesystem-wide snapshot.
+  Unreachable immutable Git objects may remain after a failed transaction. A
+  journal is not a power-loss guarantee or a substitute for migration backups.
+- Only public template/docs/tests changed. No private chezmoi or real agent config
+  was modified or deployed. No commit/push in the public or private repository;
+  real commits/pushes occurred only in disposable local test fixtures. No external
+  Git remote or credentials were used. Migration remains paused; stop after review.
+
+## Historical Phase 1 record
+
 ## Baseline
 
 - Commit: `8cb9ce370ac97e75c3a57dd541339b2c306e8d2a`, branch `main`.

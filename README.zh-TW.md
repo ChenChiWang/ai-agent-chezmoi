@@ -9,7 +9,9 @@
 ## 實驗性 Claude Code + Codex 共用範本（v2）
 
 [`examples/chezmoi/`](./examples/chezmoi/) 使用單一 shared source 產生兩邊 instructions、skills 與中立引擎。
-Phase 1 **只支援只讀 `status`**；`plan`、`in`、`push` 均明確拒絕。
+v2 已支援 **離線 `status`、核准計畫、安全 `in` 與限定範圍的 `push`**。
+私人 migration 與 legacy 入口切換維持暫停；請先閱讀
+[同步契約、核准與復原指南](./docs/sync-v2.md)。
 必須指定 source、destination；預設使用內附 scanner adapter，需要 PATH 上的 **Gitleaks 8.30.1** 與 Python 3.9+。
 掃描結果只顯示已驗證的路徑、規則 ID 與行號，詳見[scanner 契約與測試](./docs/secret-scanner.md)。
 
@@ -17,7 +19,8 @@ Phase 1 **只支援只讀 `status`**；`plan`、`in`、`push` 均明確拒絕。
 不可對本公開 repo 執行 `chezmoi init --apply`，也不可整包覆蓋現有 agent 設定。
 測試：`sh tests/test-render.sh`、`sh tests/test-status.sh`；正式 scanner 測試：`python3 tests/test-scanner.py`。
 需要 Git、chezmoi、POSIX sh、Python 3.9+；正式 scanner 測試另需固定版本 Gitleaks。
-Git 必須支援 `--no-lazy-fetch`；離線回歸測試：`python3 tests/test-offline-status.py`。
+Git 必須支援 `--no-lazy-fetch`；離線回歸測試：`python3 tests/test-offline-status.py`，以及寫入／歷史測試
+`python3 tests/test-write.py`（只在臨時本機 fixture 建立 commit／push）。
 
 以下章節描述 **legacy v1**：它的 `status` 會改 source/index、先輸出 diff 才掃描，`push` 不強制掃描。
 舊引擎保留相容性，新增 v2 不代表已修復 v1 的安全缺口。

@@ -149,6 +149,6 @@ assert_contains "$test_root/output" 'BLOCKED_OVERRIDE:'
 for cmd in in push plan; do
   rc=0
   isolated sh "$engine" "$cmd" > "$test_root/output" 2>&1 || rc=$?
-  [ "$rc" = 64 ]; assert_contains "$test_root/output" 'UNSUPPORTED:'
+  [ "$rc" = 64 ]; assert_contains "$test_root/output" 'USAGE:'
 done
-echo 'PASS: read-only status, scoped files, drift, staged secret, scanner failures, unsafe templates, symlinks, overrides, unsupported writes'
+echo 'PASS: read-only status, scoped files, drift, staged secret, scanner failures, unsafe templates, symlinks, overrides, writes require explicit plans'

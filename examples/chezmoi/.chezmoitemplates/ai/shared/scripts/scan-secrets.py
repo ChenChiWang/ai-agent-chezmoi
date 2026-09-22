@@ -17,6 +17,7 @@ SOURCE_FILES = (
     ".chezmoitemplates/ai/shared/skills/dotfiles-sync/SKILL.md",
     ".chezmoitemplates/ai/shared/scripts/sync.sh",
     ".chezmoitemplates/ai/shared/scripts/scan-secrets.py",
+    ".chezmoitemplates/ai/shared/scripts/sync-write.py",
     ".chezmoitemplates/ai/shared/scripts/gitleaks-rules.json",
     ".chezmoitemplates/ai/adapters/claude.md",
     ".chezmoitemplates/ai/adapters/codex.md",
@@ -26,6 +27,7 @@ SOURCE_FILES = (
     "dot_agents/skills/dotfiles-sync/SKILL.md.tmpl",
     "dot_config/ai-agent/bin/executable_sync.sh.tmpl",
     "dot_config/ai-agent/bin/executable_scan-secrets.py.tmpl",
+    "dot_config/ai-agent/bin/executable_sync-write.py.tmpl",
     "dot_config/ai-agent/bin/gitleaks-rules.json.tmpl",
     ".chezmoiignore", ".gitignore", ".gitattributes",
 )
@@ -35,6 +37,7 @@ TARGET_FILES = (
     ".agents/skills/dotfiles-sync/SKILL.md",
     ".config/ai-agent/bin/sync.sh",
     ".config/ai-agent/bin/scan-secrets.py",
+    ".config/ai-agent/bin/sync-write.py",
     ".config/ai-agent/bin/gitleaks-rules.json",
 )
 LOCATIONS = frozenset(

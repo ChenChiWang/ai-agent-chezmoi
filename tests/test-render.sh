@@ -30,7 +30,7 @@ for f in p.rglob('*'):
 assert {str(f.relative_to(p)) for f in p.rglob('*') if f.is_file()} == {
     '.claude/CLAUDE.md', '.codex/AGENTS.md',
     '.claude/skills/dotfiles-sync/SKILL.md', '.agents/skills/dotfiles-sync/SKILL.md',
-    '.config/ai-agent/bin/sync.sh',
+    '.config/ai-agent/bin/sync.sh', '.config/ai-agent/bin/sync-write.py',
     '.config/ai-agent/bin/scan-secrets.py', '.config/ai-agent/bin/gitleaks-rules.json',
 }
 PY

@@ -1,8 +1,8 @@
 # Secret scanner: Gitleaks 8.30.1
 
-The v2 read-only engine now defaults to the bundled `scan-secrets.py` adapter.
-No private-source migration or write commands are enabled by this change. The
-v1 engine remains unchanged, including its earlier scan limitations.
+The v2 status and approved write engines use the bundled `scan-secrets.py` adapter.
+Private migration remains paused. The v1 engine remains unchanged, including its
+earlier scan limitations. Write behavior is documented in [sync-v2.md](sync-v2.md).
 
 ## Dependencies and integrity
 
@@ -123,8 +123,9 @@ redaction/blocking with secrets only in working source, index, HEAD or deploymen
 The deployed adapter path is exercised through actual isolated chezmoi rendering.
 Source, Git index/HEAD/config and destination hashes/modes remain unchanged.
 
-HEAD tests use a Git shim backed by real blob objects; no commit is created. This
-does not test actual history traversal, outbound commits, approval or pushing.
+This scanner suite uses a HEAD shim backed by real blob objects and creates no
+commits. The separate `tests/test-write.py` suite exercises real local histories,
+approval, outbound secret detection and local bare-remote pushes.
 
 ## Remaining limits
 
@@ -134,7 +135,7 @@ not supported, and text admission is not a general archive classifier. Findings
 are suspicions requiring review, not verification that a credential is live.
 
 Only the fixed v2 scope is scanned. A clean result does not certify an entire
-private repository or its history. Future plan/push must scan the actual approved
-candidate and all outbound commits, preserve the user's index and revalidate
-content. No private migration, plan/pull/apply/push implementation or real-product
+private repository or its history. The v2 write helper now scans approved candidates and all outbound commits,
+including commit metadata, while preserving staged work by refusing it. See
+[sync-v2.md](sync-v2.md) and `tests/test-write.py`. No private migration or real-product
 deployment is included in this scanner work.

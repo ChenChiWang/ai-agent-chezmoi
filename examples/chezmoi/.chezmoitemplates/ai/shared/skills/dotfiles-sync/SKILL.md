@@ -1,33 +1,49 @@
 ---
 name: dotfiles-sync
-description: Inspect changes to the experimental shared Claude Code and Codex chezmoi templates and detect generated-file drift. Use for an explicitly requested v2 configuration status check; this version cannot pull, apply, commit or push.
+description: Inspect, plan, and safely synchronize a migrated shared Claude Code and Codex chezmoi profile through the v2 engine. Use when the user requests configuration status, incoming sync, or publication of shared configuration edits.
 ---
 
-# Shared configuration status (v2, experimental)
+# Shared configuration sync (v2)
 
 Use the single engine at `${AI_AGENT_HOME:-$HOME/.config/ai-agent}/bin/sync.sh`.
-Obtain the explicitly selected source and destination from the user's task or the
-reviewed fixture configuration. Do not discover or inspect private dotfiles as a
-side effect of opening a project. Do not trigger this skill on session start.
+Select the source/destination from the task or reviewed configuration. Never infer
+that the current project is the dotfiles repository or trigger writes on session
+start. The engine requires an already migrated v2 profile; installation and private
+migration are separate tasks.
 
 ```sh
-sh "${AI_AGENT_HOME:-$HOME/.config/ai-agent}/bin/sync.sh" status \
-  --source "$sync_source" --destination "$sync_destination"
+sh "$engine" status --source "$sync_source" --destination "$sync_destination"
+sh "$engine" plan --operation in \
+  --source "$sync_source" --destination "$sync_destination" \
+  --remote "$approved_remote_url" --branch "$sync_branch" --plan "$plan_file"
 ```
 
-The source must be the root of a regular Git checkout containing the v2 source
-layout. The bundled scanner uses Gitleaks 8.30.1 on PATH and Python 3's standard
-library. Missing tools, a different Gitleaks version, or an invalid report block
-the check. Do not install tools or substitute a passing scanner to hide a failure.
-An explicit `--scanner` override is only for reviewed adapters or isolated tests;
-it is trusted executable code, not a command string or an approval flag.
+For publication, choose `plan --operation push`. Supply explicit `--author-name`,
+`--author-email` and optionally `--message` for a new commit. Plans are private new
+JSON files outside both roots and expire after one hour. The output identifies
+changed paths/hashes, generated outputs, outbound commits, branch, remote identifier
+and `PLAN_ID`; inspect the JSON for the exact remote and candidate identities.
+Review the actual edits at those hashes and every listed outbound commit. Hashes
+alone do not explain the change.
 
-Report source changes and deployment drift separately. Status reports only fixed
-relative paths and labels, never raw file contents. Findings show only validated
-snapshot paths, rule IDs and line numbers. Scanner findings and failures block
-normal output. A clean result covers only the listed v2 files, not the
-whole source, history, or outbound commits, and is not permission to push.
+Use existing explicit task authorization or obtain approval for the concrete plan
+before executing `in` or `push`, with the same options and `--approve PLAN_ID`.
+The flag is not evidence of human consent. Execution rechecks/re-scans the plan;
+changed content, branch, remote or index requires a new review. `push` also applies
+the approved generated outputs before publication, keeping deployment and its local
+commit consistent. A status result is not push approval.
 
-For drift, preserve the deployed file and move the intended edit into shared
-source through a separate reviewed edit. Do not use re-add to recover templates.
-`plan`, `in`, and `push` are unsupported and fail; do not fall back to v1.
+Preserve manual generated-file edits and move their intent into shared source via
+a separate reviewed edit. Do not re-add templates, reset/stash staged work, resolve
+conflicts automatically, or fall back to v1 after a refusal. The engine blocks
+staged changes, drift, unknown/out-of-scope history, merges and non-fast-forwards.
+
+Gitleaks 8.30.1 and Python 3.9+ are required. Missing tools and invalid scan reports
+block sync; never substitute a passing scanner. `--scanner` is a trusted executable
+extension for reviewed adapters/tests. Findings are redacted; do not expose raw
+secret values, scanner logs or credential URLs.
+
+A push failure retains the approved local commit and outputs. Report the failure
+and re-plan before retry; the remote may have accepted before a disconnect. A lock
+or recovery journal requires inspection, not automatic removal. Deployment of this
+skill does not authorize changes outside the v2 allowlist or legacy caller cutover.

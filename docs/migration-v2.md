@@ -1,7 +1,8 @@
 # Claude Code + Codex shared configuration — experimental v2
 
-Phase 1 provides an opt-in template and read-only status engine. It is **not a
-replacement for an installed v1 workflow**. No home-directory deployment, private
+v2 provides an opt-in template, offline status, approved `in` and `push`.
+See [the write/approval/recovery contract](sync-v2.md). It is **not an automatic
+replacement for an installed v1 workflow**; private migration remains paused. No home-directory deployment, private
 dotfiles access, remote access, commit, or push is implied by developing this repo.
 
 ## One source, multiple outputs
@@ -15,9 +16,10 @@ reviewed migration. Do not initialize chezmoi against this public repository.
 | Same shared instructions + `adapters/codex.md` | `.codex/AGENTS.md` |
 | `shared/skills/dotfiles-sync/SKILL.md` | `.claude/skills/dotfiles-sync/SKILL.md` and `.agents/skills/dotfiles-sync/SKILL.md` |
 | `shared/scripts/sync.sh` | `.config/ai-agent/bin/sync.sh` |
+| `shared/scripts/sync-write.py` | `.config/ai-agent/bin/sync-write.py` |
 | `shared/scripts/scan-secrets.py` + `gitleaks-rules.json` | `.config/ai-agent/bin/scan-secrets.py` + `gitleaks-rules.json` |
 
-The paths in the last three rows are relative to `.chezmoitemplates/ai/`.
+The paths in the last four rows are relative to `.chezmoitemplates/ai/`.
 Generated instructions carry an editing notice. Skill frontmatter and the shell
 shebang remain the first bytes of their respective outputs. No settings.json,
 config.toml, MCP configuration, hooks, subagents or automatic memory are migrated.
@@ -28,10 +30,10 @@ editing a generated file produces drift, not a source update. Preserve such edit
 and move their intent into the shared source before any deployment.
 
 Wrappers use raw `include` instead of `template`. However, chezmoi still parses
-files under `.chezmoitemplates`. Phase 1 therefore rejects opening Go-template
+files under `.chezmoitemplates`. The engine therefore rejects opening Go-template
 delimiters in shared text/scripts rather than attempting arbitrary escaping or
 dynamic evaluation. The engine constructs its own wrapper delimiters at runtime.
-The seven wrappers have an exact, checked format. Extending that format requires
+The eight wrappers have an exact, checked format. Extending that format requires
 an engine/schema change and new tests.
 
 ## Read-only status contract
@@ -54,16 +56,16 @@ not overlap. The source must be the root of a regular Git checkout containing
 the complete v2 layout; linked Git worktrees are not supported yet. This engine
 does not call `chezmoi source-path` or default to the current project or private
 source. Source identity here means the explicitly supplied, validated checkout;
-remote/branch approval and private-source discovery belong to Phase 2.
+write operations separately require the explicit remote URL and branch. No private-source discovery is performed.
 
-Status inspects 17 fixed source files: seven shared/adapter files, seven wrappers,
+Status inspects 19 fixed source files: eight shared/adapter files, eight wrappers,
 and `.chezmoiignore`, `.gitignore`, `.gitattributes`. It compares raw working bytes
 and executable bits with index/HEAD blobs, without clean filters or diff drivers.
 An unborn branch is supported. Source changes are reported separately as staged
 and working changes. Unrelated staged/untracked paths remain untouched and are
 not enumerated or scanned.
 
-The seven generated destinations are compared against a render of the restricted
+The eight generated destinations are compared against a render of the restricted
 v2 profile. Missing files, byte differences, and a missing executable bit on the
 engine or scanner adapter produce drift. Symlinks in scoped relative paths, unsupported Git entry
 types, missing required source files, or conflicts cause a nonzero error.
@@ -82,8 +84,8 @@ private temporary snapshots, removes them on normal exit/signals, and reports
 fixed relative paths and labels. It does not print raw diffs, remote URLs, scanner
 stdout/stderr, or underlying tool errors that might contain sensitive data.
 Snapshots are point-in-time observations, not an atomic plan or push approval.
-No shared mutation lock is needed in Phase 1; concurrent edits can affect the
-observation, so all write workflows remain unsupported.
+Status does not take the mutation lock; concurrent edits can affect its observation.
+Write operations use their own locked, revalidated approval plans.
 
 All Git calls set `GIT_NO_LAZY_FETCH=1` and pass `--no-lazy-fetch`, so partial
 clones never fetch missing objects on demand. An empty `GIT_ALLOW_PROTOCOL` and
@@ -127,7 +129,7 @@ or historical secrets. Unknown paths are outside the engine's fixed scope.
 | `NO_CHANGES` | 0 | Scoped source and generated outputs match |
 | `OK` | 0 | Scoped source changed; deployed output matches render |
 | `DRIFT` | 2 | Generated destination differs; no apply performed |
-| `USAGE`, `UNSUPPORTED` | 64 | Bad invocation or `plan`/`in`/`push` |
+| `USAGE`, `UNSUPPORTED` | 64 | Bad status invocation (write result codes are documented separately) |
 | `INVALID_SOURCE`, `UNSUPPORTED_TEMPLATE`, `UNSUPPORTED_HOME`, `BLOCKED_OVERRIDE` | 65 | Unsupported or unsafe input/layout |
 | `BLOCKED_CONFLICT` | 66 | Scoped index contains unmerged entries |
 | `BLOCKED_SECRET` | 67 | Scanner found a match; no normal report |
@@ -138,7 +140,7 @@ Errors without an explicit classification (for example an unexpected shell I/O
 failure) still exit nonzero; callers must treat any nonzero unrecognized result
 as a failure. `DRIFT` is an expected nonzero status, not permission to overwrite.
 
-Phase 1 supports default destination-relative agent paths only. Nonmatching
+v2 supports default destination-relative agent paths only. Nonmatching
 `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, or `AI_AGENT_HOME` are rejected. An existing
 `AGENTS.override.md` also blocks status without reading its content. These checks
 cannot detect product configuration supplied elsewhere; real product discovery
@@ -148,19 +150,20 @@ and load verification remain part of a later pilot.
 
 `examples/dotfiles-sync/sync.sh` remains unchanged. Its session-start `in`, mutable
 `status`, and `push` are still v1 behavior, including the known safety gaps.
-README examples clearly label them. Do not install the v2 skill over the same name
-or turn the old script into a wrapper during Phase 1: that would replace `in` and
-`push` with unsupported operations and break the existing workflow.
+README examples clearly label them. Do not install the v2 skill over the same name or turn the old script into a
+wrapper until migration, backups, mappings and new caller arguments are reviewed.
+The v2 commands require explicit plans and are intentionally not argument-compatible
+with automatic legacy calls.
 
 The old ignore example now excludes `.claude.json` and `settings.local.json`, and
 the old setup guide no longer asks to manage local settings. These repo edits do
 not change an installed source. Later merge ignore rules deliberately; do not
 overwrite private ignore files or automatically remove existing tracked files.
 
-Phase 2 still needs plan snapshots, shared locks,
-controlled pull/apply, content approval, preserved index state, outbound-history
-validation, and explicit remote/branch verification. Never substitute v1 calls
-when v2 refuses an operation.
+The public engine now includes plan snapshots, shared locks, controlled scoped
+apply, content approval, index preservation, outbound-history validation and
+explicit remote/branch selection. Private mapping/backup/rollout work remains
+separate. Never substitute v1 calls when v2 refuses an operation.
 
 Before an authorized local pilot:
 
@@ -192,12 +195,14 @@ sh tests/test-render.sh
 sh tests/test-status.sh
 python3 tests/test-scanner.py  # requires Gitleaks 8.30.1 on PATH; never silently skips
 python3 tests/test-offline-status.py
+python3 tests/test-write.py    # real commits/pushes only in local disposable fixtures
 ```
 
 Tests create disposable source/destination/home/config/cache/state directories.
 They clear inherited Git, SSH, XDG and agent settings; no real remote or login is used.
-Fixture Git init/add are local only; **no commit is created**. HEAD behavior uses
-a Git shim backed by real index blobs, so it is not a real committed-history test.
+The original status suites use local init/add and a HEAD shim without creating
+commits. The new write suite creates real history and local bare-remotes in
+disposable fixtures, including outbound-secret and failure/retry tests.
 Actual chezmoi apply runs only against fixture paths. Never replace those paths
 with a personal home or source to run these tests.
 

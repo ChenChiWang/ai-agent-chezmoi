@@ -1,12 +1,15 @@
 #!/bin/sh
-# Experimental v2. No source discovery, network, staging, apply or push.
+# v2: offline status; approved write operations use the sibling helper.
 set -eu
 umask 077
 
 fail() { printf '%s\n' "$2"; exit "$1"; }
 case "${1:-}" in
   status) shift ;;
-  plan|in|push) fail 64 'UNSUPPORTED: Phase 1 implements status only' ;;
+  plan|in|push)
+    command -v python3 >/dev/null 2>&1 || fail 69 'MISSING_DEPENDENCY: Python required'
+    engine_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd -P)
+    exec python3 "$engine_dir/sync-write.py" "$@" ;;
   *) fail 64 'USAGE: sync.sh status --source ABS_PATH --destination ABS_PATH [--scanner ABS_EXECUTABLE]' ;;
 esac
 src= dst= scanner=
@@ -101,6 +104,7 @@ wrappers() {
       case "$1" in
         */executable_sync.sh.tmpl) script=sync.sh ;;
         */executable_scan-secrets.py.tmpl) script=scan-secrets.py ;;
+        */executable_sync-write.py.tmpl) script=sync-write.py ;;
         */gitleaks-rules.json.tmpl) script=gitleaks-rules.json ;;
         *) fail 65 'UNSUPPORTED_TEMPLATE: unknown wrapper' ;;
       esac
@@ -111,6 +115,7 @@ files='.chezmoitemplates/ai/shared/instructions.md
 .chezmoitemplates/ai/shared/skills/dotfiles-sync/SKILL.md
 .chezmoitemplates/ai/shared/scripts/sync.sh
 .chezmoitemplates/ai/shared/scripts/scan-secrets.py
+.chezmoitemplates/ai/shared/scripts/sync-write.py
 .chezmoitemplates/ai/shared/scripts/gitleaks-rules.json
 .chezmoitemplates/ai/adapters/claude.md
 .chezmoitemplates/ai/adapters/codex.md
@@ -120,6 +125,7 @@ dot_claude/skills/dotfiles-sync/SKILL.md.tmpl
 dot_agents/skills/dotfiles-sync/SKILL.md.tmpl
 dot_config/ai-agent/bin/executable_sync.sh.tmpl
 dot_config/ai-agent/bin/executable_scan-secrets.py.tmpl
+dot_config/ai-agent/bin/executable_sync-write.py.tmpl
 dot_config/ai-agent/bin/gitleaks-rules.json.tmpl
 .chezmoiignore
 .gitignore
@@ -189,6 +195,7 @@ targets='.claude/CLAUDE.md
 .agents/skills/dotfiles-sync/SKILL.md
 .config/ai-agent/bin/sync.sh
 .config/ai-agent/bin/scan-secrets.py
+.config/ai-agent/bin/sync-write.py
 .config/ai-agent/bin/gitleaks-rules.json'
 for rel in $targets; do
   safe_path "$dst/$rel" || fail 65 "INVALID_SOURCE: target symlink: $rel"
@@ -206,7 +213,7 @@ for rel in $targets; do
     cp "$dst/$rel" "$work/scan/target/$rel" || fail 70 "IO_ERROR: target snapshot: $rel"
     state=changed
     if cmp -s "$work/rendered" "$work/scan/target/$rel"; then state=clean; fi
-    case "$rel" in .config/ai-agent/bin/sync.sh|.config/ai-agent/bin/scan-secrets.py)
+    case "$rel" in .config/ai-agent/bin/sync.sh|.config/ai-agent/bin/scan-secrets.py|.config/ai-agent/bin/sync-write.py)
       [ -x "$dst/$rel" ] || state=mode ;;
     esac
   fi
