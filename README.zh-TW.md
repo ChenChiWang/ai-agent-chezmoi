@@ -20,10 +20,16 @@ v2 已支援 **離線 `status`、核准計畫、安全 `in` 與限定範圍的 `
 測試：`sh tests/test-render.sh`、`sh tests/test-status.sh`；正式 scanner 測試：`python3 tests/test-scanner.py`。
 需要 Git、chezmoi、POSIX sh、Python 3.9+；正式 scanner 測試另需固定版本 Gitleaks。
 Git 必須支援 `--no-lazy-fetch`；離線回歸測試：`python3 tests/test-offline-status.py`，以及寫入／歷史測試
-`python3 tests/test-write.py`（只在臨時本機 fixture 建立 commit／push）。
+`python3 tests/test-write.py`；migration fixture：`python3 tests/test-migration.py`。
+Commit／push 僅在臨時本機 fixture 執行。
+
+Phase 2.6 新增 `claude`／`claude-codex` 分階段 profile、完整六個 shared skills，
+以及保留 rollback 的離線 legacy conversion。請閱讀
+[migration readiness 與隔離測試範圍](./docs/migration-readiness.md)。
 
 以下章節描述 **legacy v1**：它的 `status` 會改 source/index、先輸出 diff 才掃描，`push` 不強制掃描。
 舊引擎保留相容性，新增 v2 不代表已修復 v1 的安全缺口。
+
 
 ## 這是什麼
 

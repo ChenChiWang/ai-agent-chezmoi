@@ -420,6 +420,19 @@ sys.exit(10 if secret else 0)
         self.assertEqual((self.dst / '.claude/CLAUDE.md').read_text(), 'concurrent user edit')
         self.assertTrue((self.src / '.git/ai-agent-sync-transaction/manifest.json').is_file())
 
+    def test_new_shared_skill_removed_secret_in_outbound_history(self):
+        rel = '.chezmoitemplates/ai/shared/skills/review/SKILL.md'
+        original = (self.src / rel).read_bytes()
+        (self.src / rel).write_bytes(original + b'\nSYNTHETIC_TEST_SECRET\n')
+        self.git(self.src, 'add', rel)
+        self.git(self.src, 'commit', '-qm', 'fixture skill secret')
+        (self.src / rel).write_bytes(original)
+        self.git(self.src, 'add', rel)
+        self.git(self.src, 'commit', '-qm', 'fixture remove skill secret')
+        before = self.state()
+        self.plan(expected=67)
+        self.assertEqual(before, self.state())
+
 
 if __name__ == '__main__':
     unittest.main()

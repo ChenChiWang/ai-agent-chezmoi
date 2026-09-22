@@ -1,5 +1,103 @@
 # Implementation status
 
+## Current acceptance: Phase 2.6 Migration Readiness (2026-09-22)
+
+- Baseline: public `03bbd09e0674cf5494dc4a44ee37438b77ce3533`; previous uncommitted
+  Phase 3 roadmap/status changes preserved. This task authorizes public code/tests
+  only: no private source, Phase 3 execution, repository commit or push.
+- Implemented 2.6A staged `claude` (31 source / 14 targets) and `claude-codex`
+  (39 / 21) profiles. Scanner owns the static mapping/wrapper schema consumed by
+  shell status, Python write and conversion engines; profile is approval-bound.
+- Implemented 2.6B mapping/render/scan/history for all six skills and Claude-only
+  settings. Five public examples are new generic content, not private copies.
+  Conversion preserves actual legacy skill output bytes and settings exactly.
+- Implemented 2.6C offline `migration plan/apply/verify/rollback`, persistent private
+  baseline blobs/manifest, explicit rule segmentation, safe plain-to-template
+  conversion and legacy forwarding entrypoint. No Git commit/ref/index change or
+  remote access is required to bootstrap. Added explicit offline `in` with a
+  hash-bound migration baseline while HEAD is still legacy; push cannot use it.
+- Shared literal opener escapes preserve JSX/Go-looking examples without arbitrary
+  template execution. Both original/encoded and decoded rendered snapshots are
+  scanned. Fixed named-template wrappers replace the earlier raw-include schema.
+- Recovery validates all old/new values before restoring, preserves later edits,
+  tracks created-directory ownership, and retains a journal on unsafe recovery.
+  Later Codex expansion has separate approval/backup and reverse-order rollback.
+- 2.6D uses fake legacy rules, six skills, three-key settings, a legacy execution
+  sentinel, isolated homes/chezmoi state, real local Git and synthetic runtime state.
+  It simulates 3A–3D and separately tests a future Codex expansion; no private
+  production data or actual product sessions participate.
+- 2.6E review: **PASS within the public/macOS/synthetic-fixture contract**. No known
+  blocking finding in that scope. Reviewed tracked changes and new implementation,
+  schema, backup/approval, templates, tests and documentation. No production
+  regression or private inventory equivalence is implied. See
+  [design, commands and acceptance boundaries](migration-readiness.md).
+
+### Phase 2.6 verification
+
+- `tests/test-migration.py`: 24 scenarios passed. Final full 23-case run passed in
+  79.256s; the added explicit test with no Codex directories passed separately in
+  4.391s. Covers complete fake 3A–3D, later expansion/reverse rollback, six skills,
+  settings/rules, literal template examples, scanning, drift, unknown inventory and
+  templates, aliases, collisions, stale/tampered backups, locks, partial failures,
+  later edits, created-directory ownership and incomplete legacy deletions.
+- `tests/test-write.py`: 27/27 passed (90.553s), including a secret removed from an
+  added shared skill's outbound history. Existing normal-sync behavior preserved.
+- `tests/test-scanner.py`: 10/10 passed (32.759s) with Gitleaks 8.30.1. Migration
+  scenarios also scan real synthetic credentials at every newly added skill path.
+- `tests/test-offline-status.py`: 6/6 passed (6.679s). No-lazy-fetch boundary intact.
+- `sh tests/test-render.sh`, `sh tests/test-status.sh`: passed. Actual chezmoi output
+  and Python rendering agree, including literal opener escapes and staged profiles.
+- Python AST/shell syntax, six skill frontmatters (Ruby YAML safe-load), complete
+  profile/wrapper mapping, changed/new-file LF/whitespace, `git diff --check`, empty
+  public index and unchanged legacy v1 engine checks passed. Skill Creator's Python
+  validator remains unavailable because PyYAML is absent; no packages installed.
+- Review corrections: local-only in no longer copies unused Git objects or writes
+  same-OID reflogs; raw and decoded history are both scanned; template openers use
+  a bounded literal escape; rollback preserves external directories/later edits;
+  unknown shared definitions block expansion; bootstrap requires the approved
+  legacy-source deletions to be complete.
+
+### Phase 2.6 stop / remaining limits
+
+- No private source or actual Claude/Codex configuration was read, modified or
+  deployed during this task. Tests use synthetic data, isolated homes/chezmoi state,
+  and disposable local Git repositories. No real external Git remote operation.
+- No public/private commit or push. Public HEAD remains `03bbd09`; initial roadmap
+  and status edits are preserved alongside the new uncommitted implementation.
+- Readiness is for the documented legacy layout and two closed profiles. Unknown
+  skills/payloads/frontmatter/settings keys or source encodings stop for review.
+  Instruction classification is explicitly reviewed; byte preservation alone
+  does not prove semantic correctness. Backups are scoped and private, not a full
+  home backup or a power-loss guarantee.
+- Real Claude loading, real statusLine dependencies, production chezmoi config/hooks,
+  fresh private inventory comparison, Windows/Linux and real SSH/HTTPS remain
+  unverified. First migration publication is still a separately authorized 3H
+  review; offline bootstrap cannot enable push or weaken its history checks.
+- The [Phase 3 roadmap](phase-3-roadmap.md) persists. Phase 3A remains unstarted;
+  3D is still a mandatory stop, and 3E–3H require later approval.
+
+## Previous session: Phase 3 preflight stopped (2026-09-22)
+
+- Phase 2.5 is accepted and published at `03bbd09e0674cf5494dc4a44ee37438b77ce3533`.
+- User now authorizes private migration 3A–3D only. Preserve existing user rules
+  and Claude-only settings; do not deploy Codex and do not push the private repo.
+  This supersedes the older migration-pause statements below.
+- Full [Phase 3 roadmap and stop evidence](phase-3-roadmap.md) recorded for later
+  sessions: 3A baseline/rollback, 3B Shared Core, 3C Claude cutover, **3D mandatory
+  regression gate and stop**, 3E Codex deployment, 3F Codex validation, 3G cross-agent
+  validation, 3H final private commit/push. 3E–3H remain unauthorized.
+- Preflight recovered the accepted inventory and inspected public source. The
+  fixed engine requires both adapters, lacks the five additional skill mappings,
+  and requires an already-migrated v2 HEAD/output baseline. These contracts do not
+  support the requested Claude-only legacy migration as published.
+- Stopped under the user's explicit incompatibility instruction. No private source
+  inspection or mutation, baseline backup, migration, deployment, commit, push or
+  Claude regression execution occurred during this attempt. 3A is not complete;
+  3B–3D have not started. No rollback of private state is needed.
+- Only public roadmap/status documentation changed. No engine extension or silent
+  workaround was attempted. Resolve the documented reference gaps before resuming;
+  prior isolated Phase 2.5 passes must not be reported as a Phase 3D pass.
+
 ## Current acceptance: v2 safe sync engine (2026-09-22)
 
 - Baseline: `0668304`, public `ai-agent-chezmoi`, clean working tree at task start.

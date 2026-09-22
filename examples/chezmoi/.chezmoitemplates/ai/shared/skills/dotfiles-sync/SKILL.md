@@ -9,12 +9,15 @@ Use the single engine at `${AI_AGENT_HOME:-$HOME/.config/ai-agent}/bin/sync.sh`.
 Select the source/destination from the task or reviewed configuration. Never infer
 that the current project is the dotfiles repository or trigger writes on session
 start. The engine requires an already migrated v2 profile; installation and private
-migration are separate tasks.
+migration are separate tasks. Choose `--profile claude` for Claude-only deployment,
+or `--profile claude-codex` after the separate Codex deployment gate. Both profiles
+use the same shared skill sources. Never create Codex files to satisfy a Claude-only
+status check. The compatibility default is dual, so always supply the chosen profile.
 
 ```sh
-sh "$engine" status --source "$sync_source" --destination "$sync_destination"
+sh "$engine" status --source "$sync_source" --destination "$sync_destination" --profile "$sync_profile"
 sh "$engine" plan --operation in \
-  --source "$sync_source" --destination "$sync_destination" \
+  --source "$sync_source" --destination "$sync_destination" --profile "$sync_profile" \
   --remote "$approved_remote_url" --branch "$sync_branch" --plan "$plan_file"
 ```
 
@@ -47,3 +50,18 @@ A push failure retains the approved local commit and outputs. Report the failure
 and re-plan before retry; the remote may have accepted before a disconnect. A lock
 or recovery journal requires inspection, not automatic removal. Deployment of this
 skill does not authorize changes outside the v2 allowlist or legacy caller cutover.
+
+During an unpublished migration, a reviewed `migration plan` creates a private
+baseline/rollback package; `migration apply` requires its `MIGRATION_ID`. A rules
+map must preserve every original instruction segment except explicitly reviewed
+legacy sync triggers. Existing portable skills and Claude settings are preserved.
+Use the public migration-readiness procedure to prepare this map; do not infer
+that installing the skill authorizes conversion.
+
+With the legacy HEAD still in place, local regression may use `plan --operation in
+--offline --baseline ABS_BACKUP --baseline-id MIGRATION_ID`, then approved `in`
+with the same options. Supply no remote for this mode. It cannot commit, fetch or
+push. Normal publication remains blocked until the separately authorized final
+migration commit/publication; never use bootstrap as a history-scan bypass.
+Stop at the requested phase gate. A successful fixture regression does not approve
+private migration, Codex deployment, product loading or final publication.

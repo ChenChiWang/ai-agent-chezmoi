@@ -4,4 +4,4 @@
 - Explain material changes and report what was actually verified.
 - Keep credentials, authentication state, local permissions and session data out of synchronization.
 - Edit shared rules and skills in the chezmoi source under `.chezmoitemplates/ai/`; generated entries are not the editing source.
-- The experimental v2 dotfiles-sync skill supports read-only status only. Do not run synchronization on session start.
+- Use v2 dotfiles-sync with an explicit deployment profile and reviewed plans for writes. Do not run synchronization on session start.

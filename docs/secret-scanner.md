@@ -1,6 +1,6 @@
 # Secret scanner: Gitleaks 8.30.1
 
-The v2 status and approved write engines use the bundled `scan-secrets.py` adapter.
+The v2 status, approved write and migration engines use the bundled `scan-secrets.py` adapter.
 Private migration remains paused. The v1 engine remains unchanged, including its
 earlier scan limitations. Write behavior is documented in [sync-v2.md](sync-v2.md).
 
@@ -134,7 +134,9 @@ not every possible secret is detectable. Decoder depth is finite; archives are
 not supported, and text admission is not a general archive classifier. Findings
 are suspicions requiring review, not verification that a credential is live.
 
-Only the fixed v2 scope is scanned. A clean result does not certify an entire
+Only the fixed profile/legacy snapshot union is admitted. Profile-specific operations
+select their active paths; the union includes all six skills, Claude settings and
+the legacy files required for conversion. A clean result does not certify an entire
 private repository or its history. The v2 write helper now scans approved candidates and all outbound commits,
 including commit metadata, while preserving staged work by refusing it. See
 [sync-v2.md](sync-v2.md) and `tests/test-write.py`. No private migration or real-product

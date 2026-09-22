@@ -14,16 +14,17 @@ facilities provide structured snapshots, shared locks, isolated Git indexes,
 atomic file replacement and recovery records. There is one shared engine for
 both agents, and no new runtime Python package dependency.
 
-The closed allowlist now has 19 source files and eight generated outputs. The
-additional source helper and its include wrapper generate
-`.config/ai-agent/bin/sync-write.py`. `scan-secrets.py` defines the scanner's matching
-scope; shell status and Python rendering are checked against actual chezmoi output.
-Source deletions, symlinks, missing generated outputs and new mappings require a
-separate schema/migration change. Missing output files are deliberately not treated
-as permission for a first deployment.
+Profiles select a closed mapping: `claude` has 31 source files / 14 targets;
+`claude-codex` has 39 / 21. Always pass `--profile claude` for a Claude-only stage;
+the compatibility default is dual. Both include all six shared skills and
+Claude-only settings. The scanner owns the mapping and wrapper schema consumed by
+shell/Python engines. Normal sync still rejects missing output files or source
+layout changes; the separate approved converter handles first deployment and staged
+expansion. See [Phase 2.6 migration readiness](migration-readiness.md) for offline
+baseline, conversion, local regression, rollback and later Codex expansion.
 
 Git and target selection are explicit; the engine never calls `chezmoi source-path`.
-Use a regular SHA-1 Git checkout with a committed v2 baseline, an existing remote
+For normal network sync, use a regular SHA-1 Git checkout with a committed v2 baseline, an existing remote
 branch, and the same local/remote branch name. Linked worktrees, shallow clones,
 object alternates, grafts and nonstandard repositories are rejected. Git must
 support `--no-lazy-fetch` (tested with 2.55.0). Partial clones work only when needed
@@ -34,7 +35,7 @@ local objects are present; they are never repaired by lazy fetch.
 changes, unresolved Git operation, special index flags, or previous incomplete
 transaction block the operation. Unrelated unstaged/untracked files are untouched.
 No stash/reset/rebase, global `add`, clean/smudge filter, diff driver, source hook,
-source template execution, or unrestricted chezmoi apply occurs.
+arbitrary source template execution, or unrestricted chezmoi apply occurs.
 
 ## Commands and approval
 
@@ -45,12 +46,12 @@ engine="$sync_destination/.config/ai-agent/bin/sync.sh"
 plan_file="$private_plan_directory/sync-plan.json"
 
 sh "$engine" plan --operation in \
-  --source "$sync_source" --destination "$sync_destination" \
+  --source "$sync_source" --destination "$sync_destination" --profile "$sync_profile" \
   --remote "$approved_remote_url" --branch main --plan "$plan_file"
 
 # After reviewing the plan and obtaining authorization for its concrete effects:
 sh "$engine" in \
-  --source "$sync_source" --destination "$sync_destination" \
+  --source "$sync_source" --destination "$sync_destination" --profile "$sync_profile" \
   --remote "$approved_remote_url" --branch main --plan "$plan_file" \
   --approve "$reviewed_plan_id"
 ```
@@ -222,6 +223,7 @@ sh tests/test-status.sh
 python3 tests/test-offline-status.py
 python3 tests/test-scanner.py
 python3 tests/test-write.py
+python3 tests/test-migration.py
 ```
 
 Write tests create real commits and push **only to disposable local bare fixtures**.

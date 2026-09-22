@@ -15,19 +15,25 @@ and uses the bundled scanner adapter with **Gitleaks 8.30.1** on PATH and Python
 Findings report only validated paths, rule IDs and line numbers. See the
 [scanner contract and tests](./docs/secret-scanner.md).
 
-Read [`docs/migration-v2.md`](./docs/migration-v2.md) before using it. This is an
+Read [`docs/migration-v2.md`](./docs/migration-v2.md) before using it. This is a
 development template; private migration and legacy caller cutover remain paused.
 Read the [sync contract, approval and recovery guide](./docs/sync-v2.md).
 Do not run `chezmoi init --apply` against this public repository or copy it over
 your current agent configuration. Tests: `sh tests/test-render.sh` and
 `sh tests/test-status.sh`; real scanner tests: `python3 tests/test-scanner.py`
 and offline regression: `python3 tests/test-offline-status.py`; write/history tests:
-`python3 tests/test-write.py` (real commits/pushes only in temporary local fixtures)
+`python3 tests/test-write.py`; migration fixtures: `python3 tests/test-migration.py`
+(real commits/pushes only in temporary local fixtures)
 (Git with `--no-lazy-fetch` support, chezmoi, POSIX sh, Python 3.9+ and pinned Gitleaks required).
+
+Phase 2.6 adds staged `claude` / `claude-codex` profiles, all six shared skills,
+and an offline legacy conversion with retained rollback. See
+[migration readiness and fixture acceptance](./docs/migration-readiness.md).
 
 The remaining instructions describe **legacy v1**. Its `status` changes source
 and index, prints diff before scanning, and its `push` does not enforce scanning.
 The v1 script is preserved for compatibility; v2 does not repair its safety gaps.
+
 
 ## What's inside
 

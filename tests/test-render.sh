@@ -17,7 +17,7 @@ printf '\nShared edit from one source.\n' >> "$src/.chezmoitemplates/ai/shared/i
 cm apply --force
 assert_contains "$dst/.claude/CLAUDE.md" 'Shared edit from one source.'
 assert_contains "$dst/.codex/AGENTS.md" 'Shared edit from one source.'
-isolated python3 - "$dst" <<'PY'
+isolated python3 - "$dst" "$engine" <<'PY'
 from pathlib import Path
 import sys
 p = Path(sys.argv[1])
@@ -27,11 +27,12 @@ assert a.split('## Claude Code')[0] == b.split('## Codex')[0]
 assert '## Codex' not in a and '## Claude Code' not in b
 for f in p.rglob('*'):
     if f.is_file(): assert b'\r' not in f.read_bytes()
-assert {str(f.relative_to(p)) for f in p.rglob('*') if f.is_file()} == {
-    '.claude/CLAUDE.md', '.codex/AGENTS.md',
-    '.claude/skills/dotfiles-sync/SKILL.md', '.agents/skills/dotfiles-sync/SKILL.md',
-    '.config/ai-agent/bin/sync.sh', '.config/ai-agent/bin/sync-write.py',
-    '.config/ai-agent/bin/scan-secrets.py', '.config/ai-agent/bin/gitleaks-rules.json',
-}
+import runpy
+api = runpy.run_path(str(Path(sys.argv[2]).with_name('scan-secrets.py')))
+assert {str(f.relative_to(p)) for f in p.rglob('*') if f.is_file()} == set(api['TARGET_FILES'])
+for skill in api['SKILLS']:
+    assert (p/('.claude/skills/' + skill + '/SKILL.md')).read_bytes() == (p/('.agents/skills/' + skill + '/SKILL.md')).read_bytes()
+assert (p/'.config/ai-agent/bin/sync-migrate.py').stat().st_mode & 0o111
+
 PY
 echo 'PASS: render, shared edits, skill frontmatter, LF, executable mode, repeat apply'

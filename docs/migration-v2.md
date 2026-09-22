@@ -1,7 +1,9 @@
 # Claude Code + Codex shared configuration — experimental v2
 
 v2 provides an opt-in template, offline status, approved `in` and `push`.
-See [the write/approval/recovery contract](sync-v2.md). It is **not an automatic
+See [the write/approval/recovery contract](sync-v2.md) and
+[Phase 2.6 migration readiness](migration-readiness.md) for the implemented staged
+profiles, six-skill conversion and reversible bootstrap. It is **not an automatic
 replacement for an installed v1 workflow**; private migration remains paused. No home-directory deployment, private
 dotfiles access, remote access, commit, or push is implied by developing this repo.
 
@@ -14,27 +16,27 @@ reviewed migration. Do not initialize chezmoi against this public repository.
 | --- | --- |
 | `.chezmoitemplates/ai/shared/instructions.md` + `adapters/claude.md` | `.claude/CLAUDE.md` |
 | Same shared instructions + `adapters/codex.md` | `.codex/AGENTS.md` |
-| `shared/skills/dotfiles-sync/SKILL.md` | `.claude/skills/dotfiles-sync/SKILL.md` and `.agents/skills/dotfiles-sync/SKILL.md` |
+| `shared/skills/<skill>/SKILL.md` | `.claude/skills/<skill>/SKILL.md` and, in the dual profile, `.agents/skills/<skill>/SKILL.md` |
 | `shared/scripts/sync.sh` | `.config/ai-agent/bin/sync.sh` |
-| `shared/scripts/sync-write.py` | `.config/ai-agent/bin/sync-write.py` |
+| `shared/scripts/sync-write.py` + `sync-migrate.py` | `.config/ai-agent/bin/sync-write.py` + `sync-migrate.py` |
 | `shared/scripts/scan-secrets.py` + `gitleaks-rules.json` | `.config/ai-agent/bin/scan-secrets.py` + `gitleaks-rules.json` |
 
 The paths in the last four rows are relative to `.chezmoitemplates/ai/`.
 Generated instructions carry an editing notice. Skill frontmatter and the shell
-shebang remain the first bytes of their respective outputs. No settings.json,
-config.toml, MCP configuration, hooks, subagents or automatic memory are migrated.
+shebang remain the first bytes of their respective outputs. Claude `settings.json` stays in place and is preserved/scanned. Codex config.toml,
+MCP configuration, hooks, subagents and automatic memory are not migrated.
 
 Edit the shared source, preview its outputs, review the changes, then apply only
 in the authorized destination. `chezmoi re-add` does not overwrite templates;
 editing a generated file produces drift, not a source update. Preserve such edits
 and move their intent into the shared source before any deployment.
 
-Wrappers use raw `include` instead of `template`. However, chezmoi still parses
-files under `.chezmoitemplates`. The engine therefore rejects opening Go-template
-delimiters in shared text/scripts rather than attempting arbitrary escaping or
-dynamic evaluation. The engine constructs its own wrapper delimiters at runtime.
-The eight wrappers have an exact, checked format. Extending that format requires
-an engine/schema change and new tests.
+Wrappers invoke fixed named templates, validated against the shared schema. Shared
+text is literal except for the exact `{{ "{{" }}` opener escape, which preserves
+JSX/template examples. Every other opening Go action is rejected. Python decodes
+this representation without evaluating source code; actual chezmoi tests verify
+identical outputs. Conversion escapes legacy literal openers automatically and
+preserves generated skill bytes. See [migration readiness](migration-readiness.md).
 
 ## Read-only status contract
 
@@ -58,14 +60,15 @@ does not call `chezmoi source-path` or default to the current project or private
 source. Source identity here means the explicitly supplied, validated checkout;
 write operations separately require the explicit remote URL and branch. No private-source discovery is performed.
 
-Status inspects 19 fixed source files: eight shared/adapter files, eight wrappers,
-and `.chezmoiignore`, `.gitignore`, `.gitattributes`. It compares raw working bytes
+Status inspects 31 source files with `--profile claude`, or 39 with
+`--profile claude-codex` (the compatibility default). This includes all six shared
+skills, Claude-only settings, the neutral engine/converter, wrappers and metadata. It compares raw working bytes
 and executable bits with index/HEAD blobs, without clean filters or diff drivers.
 An unborn branch is supported. Source changes are reported separately as staged
 and working changes. Unrelated staged/untracked paths remain untouched and are
 not enumerated or scanned.
 
-The eight generated destinations are compared against a render of the restricted
+The selected profile’s 14 or 21 generated destinations are compared against a render of the restricted
 v2 profile. Missing files, byte differences, and a missing executable bit on the
 engine or scanner adapter produce drift. Symlinks in scoped relative paths, unsupported Git entry
 types, missing required source files, or conflicts cause a nonzero error.
@@ -141,7 +144,8 @@ failure) still exit nonzero; callers must treat any nonzero unrecognized result
 as a failure. `DRIFT` is an expected nonzero status, not permission to overwrite.
 
 v2 supports default destination-relative agent paths only. Nonmatching
-`CODEX_HOME`, `CLAUDE_CONFIG_DIR`, or `AI_AGENT_HOME` are rejected. An existing
+`CLAUDE_CONFIG_DIR` or `AI_AGENT_HOME` are rejected. The dual profile also checks
+`CODEX_HOME`; Claude-only operation ignores it. In the dual profile, an existing
 `AGENTS.override.md` also blocks status without reading its content. These checks
 cannot detect product configuration supplied elsewhere; real product discovery
 and load verification remain part of a later pilot.
@@ -196,6 +200,7 @@ sh tests/test-status.sh
 python3 tests/test-scanner.py  # requires Gitleaks 8.30.1 on PATH; never silently skips
 python3 tests/test-offline-status.py
 python3 tests/test-write.py    # real commits/pushes only in local disposable fixtures
+python3 tests/test-migration.py # synthetic legacy, staged profiles, rollback, no private inputs
 ```
 
 Tests create disposable source/destination/home/config/cache/state directories.

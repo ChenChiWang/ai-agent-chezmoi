@@ -1,4 +1,4 @@
-# Target-path patterns. Only the five v2 output files belong to this MVP.
+# Target-path exclusions. Deployment scope is selected by the v2 profile.
 .claude.json
 .claude/.credentials.json
 .claude/settings.local.json
