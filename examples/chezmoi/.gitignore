@@ -1,0 +1,10 @@
+# Source-path patterns; defense in depth, not a replacement for the allowlist.
+*credentials*
+*auth.json*
+*settings.local.json*
+*dot_claude.json*
+*.key
+*.pem
+*.token
+.env
+.env.*

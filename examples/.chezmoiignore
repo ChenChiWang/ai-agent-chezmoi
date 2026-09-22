@@ -1,5 +1,7 @@
 # === 機密:絕對不納管 ===
+.claude.json
 .claude/.credentials.json
+.claude/settings.local.json
 .claude/mcp-needs-auth-cache.json
 **/.credentials*
 **/credentials*

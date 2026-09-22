@@ -5,6 +5,10 @@ description: "同步 ~/.claude 設定到 chezmoi 與 GitHub。當 session 開始
 
 # dotfiles-sync
 
+> Legacy v1: `status` 修改 source 與 index；掃描不是強制提交防護。
+> v2 範本位於 `examples/chezmoi/`，只支援只讀 status，尚不可替換正式入口。
+> 遷移前先讀 `docs/migration-v2.md`（公開範本 repo）；不要混用兩版指令。
+
 用 chezmoi 把 `~/.claude` 的可攜設定同步到你的 private GitHub repo。
 引擎是本 skill 目錄下的 `sync.sh`,提供 `in` / `status` / `push` 三個子命令。
 

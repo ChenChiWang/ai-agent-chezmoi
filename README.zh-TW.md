@@ -4,7 +4,23 @@
 
 用 [chezmoi](https://www.chezmoi.io/) 把 `~/.claude/` 的**可攜設定**跨 **Windows / macOS / Linux** 同步的完整指南與範本。
 
-只同步「設定與能力」;所有含 token、絕對路徑、對話紀錄與快取的「狀態」一律排除,不進 git。
+設計目標是只同步可攜的設定與能力。Ignore 是多層防護之一，不能保證 secret 永不進 Git，也不會清除已追蹤內容。
+
+## 實驗性 Claude Code + Codex 共用範本（v2）
+
+[`examples/chezmoi/`](./examples/chezmoi/) 使用單一 shared source 產生兩邊 instructions、skills 與中立引擎。
+Phase 1 **只支援只讀 `status`**；`plan`、`in`、`push` 均明確拒絕。
+必須指定 source、destination；預設使用內附 scanner adapter，需要 PATH 上的 **Gitleaks 8.30.1** 與 Python 3.9+。
+掃描結果只顯示已驗證的路徑、規則 ID 與行號，詳見[scanner 契約與測試](./docs/secret-scanner.md)。
+
+請先讀 [`docs/migration-v2.md`](./docs/migration-v2.md)。這是供隔離驗證的範本，尚不可直接替換現有 skill。
+不可對本公開 repo 執行 `chezmoi init --apply`，也不可整包覆蓋現有 agent 設定。
+測試：`sh tests/test-render.sh`、`sh tests/test-status.sh`；正式 scanner 測試：`python3 tests/test-scanner.py`。
+需要 Git、chezmoi、POSIX sh、Python 3.9+；正式 scanner 測試另需固定版本 Gitleaks。
+Git 必須支援 `--no-lazy-fetch`；離線回歸測試：`python3 tests/test-offline-status.py`。
+
+以下章節描述 **legacy v1**：它的 `status` 會改 source/index、先輸出 diff 才掃描，`push` 不強制掃描。
+舊引擎保留相容性，新增 v2 不代表已修復 v1 的安全缺口。
 
 ## 這是什麼
 
@@ -20,9 +36,10 @@
 | `~/.claude/skills/` | 自訂 skills |
 | `~/.claude/commands/` `agents/` `hooks/` | 若有則一併納管 |
 
-## 明確排除(不進 repo)
+## 預計排除
 
 - `~/.claude.json`、`~/.claude/.credentials.json`(含 MCP token、OAuth 憑證)
+- `~/.claude/settings.local.json`（機器本地設定）
 - `projects/`、`sessions/`、`shell-snapshots/`、`file-history/`、`history.jsonl`
 - `cache/`、`plugins/` 等機器本地快取
 

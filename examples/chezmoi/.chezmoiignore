@@ -1,0 +1,22 @@
+# Target-path patterns. Only the five v2 output files belong to this MVP.
+.claude.json
+.claude/.credentials.json
+.claude/settings.local.json
+.codex/auth.json
+**/.credentials*
+**/credentials*
+**/*.key
+**/*.pem
+**/*.token
+**/*.log
+.claude/projects/**
+.claude/sessions/**
+.claude/cache/**
+.claude/plugins/**
+.claude/history.jsonl
+.codex/sessions/**
+.codex/history.jsonl
+.codex/*.sqlite*
+.gitignore
+.gitattributes
+README.md

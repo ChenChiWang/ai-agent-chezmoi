@@ -1,8 +1,9 @@
 # 任務:用 chezmoi 建立 Claude Code 設定的跨平台同步(Mac / Windows / Linux)
 
 > 本文件交給 Claude Code 執行。請逐步進行,每個階段完成後回報結果再繼續。
-> 目前這台機器是 **Windows**(第一台/主機器),之後 Mac 和 Linux 會用
-> 本文件最後的「其他機器接入」章節加入。
+> 本文為 **legacy v1 建置指南**，命令以 Windows 為例；先確認實際執行端與 shell，不得假設目前主機是 Windows。
+> Claude Code + Codex 共用 v2 請讀 [遷移指南](docs/migration-v2.md)。Phase 1 只做隔離驗證，不授權依本文部署、連線或推送。
+> 舊引擎 status 會修改 source/index，且 push 不強制 secret 掃描；保留入口不代表已消除風險。
 
 ## 目標
 
@@ -49,9 +50,9 @@ ssh -T git@github.com   # 確認 SSH 可連 GitHub(回應含使用者名稱即�
 
 列出 `~\.claude\` 下實際存在的項目,分類回報:
 
-- 預計納管:`CLAUDE.md`、`settings.json`、`settings.local.json`、
+- 預計納管:`CLAUDE.md`、`settings.json`、
   `commands/`、`agents/`、`skills/`、`hooks/`
-- 預計排除:規則 2 的清單
+- 預計排除:規則 2 的清單，以及 `settings.local.json`
 - 其他未預期的檔案/目錄:列出並詢問使用者是否納管
 
 同時**讀取 `settings.json`**(若存在),檢查:
@@ -67,7 +68,6 @@ chezmoi init
 
 chezmoi add ~\.claude\CLAUDE.md
 chezmoi add ~\.claude\settings.json
-chezmoi add ~\.claude\settings.local.json
 chezmoi add -r ~\.claude\commands
 chezmoi add -r ~\.claude\agents
 chezmoi add -r ~\.claude\skills
@@ -90,6 +90,9 @@ chezmoi add -r ~\.claude\hooks
    ```
 3. 建立 `.chezmoiignore`,防止意外納入排除項:
    ```
+   .claude.json
+   .claude/.credentials.json
+   .claude/settings.local.json
    .claude/projects
    .claude/cache
    .claude/history.jsonl
