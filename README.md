@@ -34,6 +34,12 @@ Phase 2.7 supports source under destination HOME, including
 `$HOME/.local/share/chezmoi`, with bounded managed paths and reserved deployment
 regions. See [production layout compatibility](./docs/production-layout.md).
 
+The [agent-driven memory workflow](./docs/agent-driven-memory.md) adds start,
+confirmed-memory and finish checkpoints through the shared instructions and skill,
+plus redacted engine error diagnostics. Reviewed v2 approval and safety checks still
+apply. This source release does not deploy private settings or establish safe
+concurrent native configuration loading.
+
 The remaining instructions describe **legacy v1**. Its `status` changes source
 and index, prints diff before scanning, and its `push` does not enforce scanning.
 The v1 script is preserved for compatibility; v2 does not repair its safety gaps.

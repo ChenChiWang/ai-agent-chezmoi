@@ -233,3 +233,34 @@ Write tests create real commits and push **only to disposable local bare fixture
 They never use a personal home, private chezmoi source, SSH login or external remote.
 macOS and local file transport are tested. Linux, Git Bash/WSL, real SSH/HTTPS,
 product loading and migration/legacy caller cutover remain separate acceptance gates.
+
+
+## Agent-driven memory checkpoints
+
+The shared instructions and dotfiles-sync skill require checks before the first
+project read, when preserving confirmed durable memory, and at task completion.
+Local status is offline: a permitted incoming plan is needed to establish remote
+freshness. Global rules belong in the existing shared source; project-only decisions
+belong in project documentation. Source recording, local application, remote
+publication, pending approval and blocked states are distinct. Re-read changed source
+and deployed instructions/skills after a successful sync. No native hot reload is
+promised. See [workflow and evidence limits](agent-driven-memory.md).
+
+Checkpoints grant no write or publication authorization. Existing exact authorization
+may be used within its scope; changed plans need fresh review. Plan expiry, complete
+candidate/history scanning, drift checks, writer locks and transaction recovery are
+unchanged. The release retains the existing `claude` and `claude-codex` profiles.
+Experimental coordinator metadata is refused with `BLOCKED_UNSUPPORTED_COORDINATION`
+(exit 73), even if a legacy lock is absent. This refusal never reads, repairs or
+retires leases and does not implement experimental coordination. Known unmanaged
+concurrent use still requires deferring application.
+
+## Redacted error diagnostics
+
+Existing stdout labels and exit codes are preserved. Error stderr adds a bounded
+`DIAGNOSTIC:` JSON record: allowlisted operation/phase/type, optional errno,
+known engine-module basename and line, transaction-start status, rollback result,
+and cleanup outcomes. Unknown facts stay unknown. The first error is distinct from
+up to eight secondary errors. Exception text, absolute paths, locals, credentials,
+and raw subprocess output are excluded. Diagnostics do not retry, clear locks,
+change scan results or make recovery safe automatically.

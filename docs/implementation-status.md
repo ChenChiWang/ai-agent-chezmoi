@@ -1,5 +1,28 @@
 # Implementation status
 
+## Agent-driven memory release candidate (2026-09-25)
+
+- Minimal candidate: shared memory checkpoints, common skill workflow/state reporting,
+  redacted error diagnostics and directly related tests/documentation.
+- Accepted isolated Codex incoming and outgoing paths PASS. Outgoing was executed
+  by the original agent session. An operator-created independent receiver obtained
+  the same published content and rendered files. These are historical accepted
+  results, not new runs of this extracted release candidate.
+- Overall remains **agent-driven runtime PARTIAL**. Claude incoming, deployed-file
+  verification and reread evidence are retained. Its startup plan-path failure,
+  unsupported measured-performance claims and unverified autonomous outgoing remain.
+  No further Claude runtime or authentication tests are planned by this release.
+- Original IO_ERROR: **not reproduced; root cause unknown**. No repeated incoming
+  run is used to investigate it.
+- Historical native loading/family-retirement gate and production multi-machine
+  deployment remain unqualified. Codex results do not qualify Claude behavior.
+- Candidate preparation is not public publication or private deployment. No fixture
+  commits, fixture memory, login payloads or raw session logs are release inputs.
+- Diagnostics are backported onto the published v2 transaction/lock order. Standalone
+  Codex profile, repository-profile extension, launcher, guardian, cohort activation,
+  enrollment and family tracking remain outside this candidate.
+- See [workflow, scope and validation boundary](agent-driven-memory.md).
+
 ## Phase 2.7 Production Layout Compatibility (2026-09-22)
 
 - Public baseline: `50fabd55bd2d6d8865501ce739184937d3d0560b`. The user

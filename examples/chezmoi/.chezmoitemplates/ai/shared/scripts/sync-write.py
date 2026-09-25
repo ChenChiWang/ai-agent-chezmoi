@@ -34,6 +34,96 @@ class Block(Exception):
         self.code, self.label = code, label
 
 
+class Diagnostics:
+    # 僅保存固定欄位；不保存例外文字、檔案路徑、locals 或子程序輸出。
+    OPERATIONS = {
+        'validate_plan': 'preflight', 'initialize_engine': 'prepare',
+        'build_candidate': 'prepare', 'source_lock': 'coordination',
+        'validate_execution': 'preflight', 'write_plan': 'prepare',
+        'activate': 'transaction',
+        'transfer_objects': 'transfer', 'create_journal': 'transaction',
+        'index_lock': 'transaction', 'backup_files': 'transaction',
+        'write_manifest': 'transaction', 'apply_files': 'transaction',
+        'update_ref': 'transaction', 'restore_files': 'rollback',
+        'verify_ref': 'rollback', 'remove_journal': 'cleanup',
+        'remove_index_lock': 'cleanup', 'release_lock': 'cleanup',
+        'temporary_workspace': 'cleanup', 'atomic_temporary': 'cleanup',
+        'object_temporary': 'cleanup',
+        'unknown': 'unknown',
+    }
+
+    def __init__(self):
+        self.operation = 'unknown'
+        self.first = None
+        self.secondary = []
+        self.first_error_id = None
+        self.transaction_started = 'unknown'
+        self.rollback = dict(attempted='unknown', result='unknown')
+        self.cleanup = {}
+
+    def mark(self, operation):
+        self.operation = operation if operation in self.OPERATIONS else 'unknown'
+
+    def capture(self, error):
+        if id(error) == self.first_error_id:
+            return
+        allowed = (Block, OSError, PermissionError, FileNotFoundError, FileExistsError,
+                   IsADirectoryError, NotADirectoryError, TimeoutError, ValueError,
+                   UnicodeDecodeError, KeyError, TypeError, RecursionError,
+                   subprocess.SubprocessError, subprocess.CalledProcessError,
+                   subprocess.TimeoutExpired, KeyboardInterrupt)
+        kind = type(error).__name__ if type(error) in allowed else 'unknown'
+        location = dict(file='unknown', line=None)
+        trace = error.__traceback__
+        while trace:
+            # 比對完整程式來源，輸出則僅有固定 basename 與行號。
+            if trace.tb_frame.f_code.co_filename in (__file__, api.__file__):
+                location = dict(file='sync-write.py' if trace.tb_frame.f_code.co_filename == __file__
+                                else 'scan-secrets.py', line=trace.tb_lineno)
+            trace = trace.tb_next
+        record = dict(phase=self.OPERATIONS[self.operation], operation=self.operation,
+                      exception_type=kind, location=location)
+        if isinstance(error, OSError) and type(error.errno) is int and 0 < error.errno < 4096:
+            record['errno'] = error.errno
+        if self.first is None:
+            self.first_error_id = id(error)
+            self.first = record
+        elif record != self.first and record not in self.secondary and len(self.secondary) < 8:
+            self.secondary.append(record)
+
+    @contextlib.contextmanager
+    def cleaning(self, operation):
+        previous = self.operation
+        self.mark(operation)
+        operation = self.operation
+        entry = self.cleanup.setdefault(operation, dict(attempted=True, result='unknown'))
+        try:
+            yield
+        except BaseException as error:
+            entry['result'] = 'failed'
+            self.capture(error)
+            raise
+        else:
+            if entry['result'] != 'failed':
+                entry['result'] = 'succeeded'
+        finally:
+            self.operation = previous
+
+    def emit(self, error):
+        if self.first is None:
+            self.capture(error)
+        record = dict(schema=1, **self.first, transaction_started=self.transaction_started,
+                      rollback=self.rollback,
+                      cleanup=dict(attempted=True if self.cleanup else 'unknown',
+                                   result=('failed' if any(v['result'] == 'failed' for v in self.cleanup.values())
+                                           else 'succeeded' if self.cleanup else 'unknown'),
+                                   operations=self.cleanup), secondary_errors=self.secondary)
+        print('DIAGNOSTIC: ' + json.dumps(record, sort_keys=True), file=sys.stderr)
+
+
+diagnostics = Diagnostics()
+
+
 def need(ok, label='INVALID_SOURCE', code=65):
     if not ok:
         raise Block(code, label)
@@ -99,13 +189,18 @@ def atomic(path, value):
             os.fchmod(f.fileno(), value[1])
             os.fsync(f.fileno())
         os.replace(name, path)
+    except BaseException as error:
+        diagnostics.capture(error)
+        raise
     finally:
-        if os.path.exists(name):
-            os.unlink(name)
+        with diagnostics.cleaning('atomic_temporary'):
+            if os.path.exists(name):
+                os.unlink(name)
 
 
 class Engine:
     def __init__(self, args, tmp):
+        diagnostics.mark('initialize_engine')
         self.a, self.tmp = args, tmp
         self.profile = getattr(args, 'profile', 'claude-codex')
         self.files, self.targets = api.mapping(self.profile)
@@ -354,6 +449,7 @@ class Engine:
         need(all(not p or p.startswith(b'H ') for p in flags), 'BLOCKED_INDEX_FLAGS', 66)
 
     def build(self):
+        diagnostics.mark('build_candidate')
         self.before = self.state()
         need(self.before['head'] == self.head and self.before['ref'] == self.ref, 'BLOCKED_STALE_PLAN', 68)
         self.clean_index()
@@ -401,6 +497,7 @@ class Engine:
                     tree=self.candidate_tree, tools=tools)
 
     def transfer_objects(self):
+        diagnostics.mark('transfer_objects')
         for parent, dirs, files in os.walk(self.iso / 'objects'):
             rel = Path(parent).relative_to(self.iso / 'objects')
             if rel.parts and rel.parts[0] == 'info':
@@ -419,18 +516,25 @@ class Engine:
                             f.flush()
                             os.fsync(f.fileno())
                         os.replace(temporary, dest)
+                    except BaseException as error:
+                        diagnostics.capture(error)
+                        raise
                     finally:
-                        if os.path.exists(temporary):
-                            os.unlink(temporary)
+                        with diagnostics.cleaning('object_temporary'):
+                            if os.path.exists(temporary):
+                                os.unlink(temporary)
 
     def transact(self, new_head, changes, new_index):
+        diagnostics.mark('create_journal')
         need(self.state() == self.before, 'BLOCKED_STALE_PLAN', 68)
         journal = self.gd / 'ai-agent-sync-transaction'
         journal.mkdir(mode=0o700)
+        diagnostics.transaction_started = True
         backups, committed, ref_attempted = [], False, False
         index_lock = self.gd / 'index.lock'
         acquired = False
         try:
+            diagnostics.mark('index_lock')
             # Git's own index lock prevents cooperating ordinary Git writers too.
             with index_lock.open('xb') as f:
                 acquired = True
@@ -441,6 +545,7 @@ class Engine:
             changes = [(p, v) for p, v in changes if read(p) != v]
             changes.append((self.gd / 'index', (new_index, read(self.gd / 'index')[1])))
             manifest = []
+            diagnostics.mark('backup_files')
             for n, (path, value) in enumerate(changes):
                 old = read(path)
                 atomic(journal / ('old-%d' % n), (old[0], 0o600))
@@ -449,11 +554,14 @@ class Engine:
                 manifest.append(dict(path=str(path), old_mode=old[1], new_mode=value[1],
                                      old_hash=digest(old[0]), new_hash=digest(value[0])))
             record = dict(ref=self.ref, old_head=self.head, new_head=new_head, files=manifest)
+            diagnostics.mark('write_manifest')
             atomic(journal / 'manifest.json', (encoded(record), 0o600))
+            diagnostics.mark('apply_files')
             for n, (path, value) in enumerate(changes):
                 need(read(path) == ((journal / ('old-%d' % n)).read_bytes(), manifest[n]['old_mode']),
                      'BLOCKED_STALE_PLAN', 68)
                 atomic(path, value)
+            diagnostics.mark('update_ref')
             need(self.source_git('symbolic-ref', 'HEAD').decode().strip() == self.ref, 'BLOCKED_STALE_PLAN', 68)
             if new_head != self.head:
                 ref_attempted = True
@@ -462,17 +570,23 @@ class Engine:
                 need(self.source_git('rev-parse', self.ref).decode().strip() == self.head,
                      'BLOCKED_STALE_PLAN', 68)
             committed = True
-        except BaseException:
+        except BaseException as error:
+            diagnostics.capture(error)
+            diagnostics.rollback = dict(attempted=True, result='unknown')
             # A killed/timed-out update-ref may already have committed. Preserve
             # the journal instead of rolling files back underneath an advanced ref.
             if ref_attempted:
                 try:
+                    diagnostics.mark('verify_ref')
                     current = self.source_git('rev-parse', self.ref).decode().strip()
                     need(current == self.head, 'RECOVERY_REQUIRED', 72)
-                except BaseException:
+                except BaseException as recovery_error:
+                    diagnostics.capture(recovery_error)
+                    diagnostics.rollback['result'] = 'failed'
                     raise Block(72, 'RECOVERY_REQUIRED') from None
             # Never overwrite a third-party edit while rolling back.
             recovered = True
+            diagnostics.mark('restore_files')
             for path, new, old in reversed(backups):
                 try:
                     current = read(path)
@@ -480,20 +594,28 @@ class Engine:
                         continue
                     need(current == new)
                     atomic(path, old)
-                except BaseException:
+                except BaseException as recovery_error:
+                    diagnostics.capture(recovery_error)
                     recovered = False
+            diagnostics.rollback['result'] = 'succeeded' if recovered else 'failed'
             if recovered:
-                shutil.rmtree(journal)
+                with diagnostics.cleaning('remove_journal'):
+                    shutil.rmtree(journal)
             else:
                 raise Block(72, 'RECOVERY_REQUIRED') from None
             raise
         finally:
             if acquired:
-                index_lock.unlink()
+                with diagnostics.cleaning('remove_index_lock'):
+                    index_lock.unlink()
         if committed:
-            shutil.rmtree(journal)
+            with diagnostics.cleaning('remove_journal'):
+                shutil.rmtree(journal)
 
     def execute(self):
+        diagnostics.transaction_started = False
+        diagnostics.rollback = dict(attempted=False, result='not_attempted')
+        diagnostics.mark('activate')
         if self.a.operation == 'in':
             changes = [(self.dst / p, v) for p, v in self.rendered.items()]
             if self.remote_head != self.head:
@@ -584,8 +706,12 @@ def arguments():
 
 @contextlib.contextmanager
 def lock(source):
+    diagnostics.mark('source_lock')
     path = source / '.git/ai-agent-sync.lock'
     safe(path)
+    # 本版不接管實驗協調狀態；即使沒有舊式鎖，也不得忽略現有 lease/barrier。
+    for name in ('ai-agent-cohort.json', 'ai-agent-cohort.lock', 'ai-agent-launch-readers'):
+        need(not os.path.lexists(source / '.git' / name), 'BLOCKED_UNSUPPORTED_COORDINATION', 73)
     try:
         path.mkdir(mode=0o700)
     except FileExistsError:
@@ -593,11 +719,20 @@ def lock(source):
     try:
         (path / 'owner.json').write_bytes(encoded(dict(pid=os.getpid(), started=int(time.time()))))
         yield
+    except BaseException as error:
+        diagnostics.capture(error)
+        raise
     finally:
-        shutil.rmtree(path)
+        with diagnostics.cleaning('release_lock'):
+            shutil.rmtree(path)
 
 
 def main():
+    global diagnostics
+    diagnostics = Diagnostics()
+    diagnostics.transaction_started = False
+    diagnostics.rollback = dict(attempted=False, result='not_attempted')
+    diagnostics.mark('validate_plan')
     os.umask(0o077)
     args = arguments()
     layout(args)  # Reject unsafe paths before even creating a source lock.
@@ -615,11 +750,14 @@ def main():
         document = json.loads(approved)
         need(type(document.get('created')) is int and 0 <= time.time() - document['created'] < 3600,
              'BLOCKED_EXPIRED_PLAN', 68)
-    with tempfile.TemporaryDirectory(prefix='ai-agent-write-', dir='/tmp') as temporary:
+    temporary = tempfile.TemporaryDirectory(prefix='ai-agent-write-', dir='/tmp')
+    try:
         with lock(Path(args.source).resolve()):
-            engine = Engine(args, Path(temporary))
+            engine = Engine(args, Path(temporary.name))
             result = engine.build()
+            diagnostics.mark('validate_execution')
             if args.command == 'plan':
+                diagnostics.mark('write_plan')
                 document = dict(created=int(time.time()), plan=result)
                 blob = encoded(document)
                 with plan_path.open('xb') as output:
@@ -645,7 +783,30 @@ def main():
                 need(read(plan_path)[0] == approved, 'BLOCKED_STALE_PLAN', 68)
                 need(0 <= time.time() - document['created'] < 3600, 'BLOCKED_EXPIRED_PLAN', 68)
                 engine.execute()
+    except BaseException as error:
+        diagnostics.capture(error)
+        raise
+    finally:
+        with diagnostics.cleaning('temporary_workspace'):
+            temporary.cleanup()
     return 0
+
+
+def cli():
+    try:
+        return main()
+    except Block as error:
+        print(error.label)
+        diagnostics.emit(error)
+        return error.code
+    except KeyboardInterrupt as error:
+        print('INTERRUPTED: inspect transaction journal before retry')
+        diagnostics.emit(error)
+        return 130
+    except (OSError, ValueError, KeyError, TypeError, RecursionError, subprocess.SubprocessError) as error:
+        print('IO_ERROR: operation stopped; no raw tool output exposed')
+        diagnostics.emit(error)
+        return 70
 
 
 if __name__ == '__main__':
@@ -653,14 +814,4 @@ if __name__ == '__main__':
         raise KeyboardInterrupt()
     for sig in (signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, interrupted)
-    try:
-        sys.exit(main())
-    except Block as error:
-        print(error.label)
-        sys.exit(error.code)
-    except KeyboardInterrupt:
-        print('INTERRUPTED: inspect transaction journal before retry')
-        sys.exit(130)
-    except (OSError, ValueError, KeyError, TypeError, RecursionError, subprocess.SubprocessError):
-        print('IO_ERROR: operation stopped; no raw tool output exposed')
-        sys.exit(70)
+    sys.exit(cli())
