@@ -149,7 +149,12 @@ checkpoint 草稿），以「以本地為準」的 merge 收入，其 `agent-dri
 
 **cohort 移除（2026-09-26）**：引擎移除全部 cohort／lease／DEFERRED_READERS 與 launcher 專用 timeout 後門，`lock()` 回到單一 mkdir 鎖；最後含 hooks 的版本以 tag `engine-with-cohort-hooks` 標記供封存測試使用。
 
-尚未執行：真實 Claude／Codex session 的主動觸發驗收。
+**真實 session 驗收（2026-09-26，Claude Code 非互動模式，普通唯讀任務）**：第一次 FAIL（模型判定一句
+README 摘要非「實質工作」而跳過）；指示改為無條件、列出兩條命令並註明「不是判斷題」後重測 PASS：
+先 `status` 再 `check`（真實 fetch，UP_TO_DATE，寫入當日快取），再讀專案檔，7 turns。發現指示中的
+`${AI_AGENT_HOME:-…}` 寫法會被權限分類器擋下，已改為字面 `~/` 路徑。Codex session 未測。
+
+尚未執行：Codex 真實 session 驗收；互動模式下建議在 settings.json 加 `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)` 允許清單以免每次提示。
 
 ## 6. 附錄：本次複查的程式碼問題
 

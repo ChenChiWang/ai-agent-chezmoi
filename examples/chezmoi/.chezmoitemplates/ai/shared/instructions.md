@@ -5,8 +5,8 @@
 In the first turn of every new session, before reading any project file or answering anything, even a short read-only question, run the two start checks through the dotfiles-sync skill or directly:
 
 ```sh
-sh "${AI_AGENT_HOME:-$HOME/.config/ai-agent}/bin/sync.sh" status --config "${AI_AGENT_HOME:-$HOME/.config/ai-agent}/sync.local.json" --agent <claude|codex>
-sh "${AI_AGENT_HOME:-$HOME/.config/ai-agent}/bin/sync.sh" check  --config "${AI_AGENT_HOME:-$HOME/.config/ai-agent}/sync.local.json" --agent <claude|codex>
+sh ~/.config/ai-agent/bin/sync.sh status --config ~/.config/ai-agent/sync.local.json --agent <claude|codex>
+sh ~/.config/ai-agent/bin/sync.sh check --config ~/.config/ai-agent/sync.local.json --agent <claude|codex>
 ```
 
 `CHECKED_TODAY` or `UP_TO_DATE` means continue with the task; `BEHIND` means plan and apply within the skill's authorization rules; any error means report it and continue with existing memory. This is a fixed step, not a judgment call about whether the task is substantive. When a preference, rule or decision is confirmed as durable, record it in its authoritative source (shared instructions or skill source for global knowledge, the project's reviewed documentation for project knowledge) and say whether it is only recorded locally. At task completion or an explicit end of work, if the source was edited or `check --force` reports `AHEAD`, publish within authorization or report what is pending; never create empty commits or claim a push that was not confirmed.
