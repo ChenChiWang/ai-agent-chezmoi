@@ -1,45 +1,79 @@
 **English** | [繁體中文](./README.zh-TW.md)
 
-# Sync Claude Code settings across platforms (chezmoi)
+# Claude Code + Codex configuration sync (chezmoi)
 
-A guide and templates for syncing the **portable parts** of `~/.claude/` across **Windows / macOS / Linux** with [chezmoi](https://www.chezmoi.io/).
+Keep the **portable parts** of your Claude Code and Codex configuration (global
+instructions, skills, settings) in one chezmoi source, sync it to every machine on
+macOS / Linux / Windows, and let the agents themselves **sync safely at the start and
+end of work**: pull before starting, publish only after you approve.
 
-The intended scope is portable settings and capabilities. Ignore rules are defense in depth: they do not guarantee that secrets cannot enter Git or remove already tracked data.
+## Let an agent bring a machine up (recommended)
 
-## Experimental Claude Code + Codex shared templates (v2)
+Prerequisite: you already have a private dotfiles repository in the v2 layout. On the
+new machine, open Claude Code or Codex and say one sentence:
 
-[`examples/chezmoi/`](./examples/chezmoi/) adds one shared source for instructions,
-skills and a neutral engine. v2 supports **offline `status`, remote `check`,
-approval plans, safe `in`, and scoped `push`** for the `claude`, `codex` and
-`claude-codex` profiles. Parameters come from a machine-local `sync.local.json`
-(`--config`); the file names the one `writer` agent and may enable `auto_in` for
-shared-text-only incoming changes. The bundled scanner adapter needs
-**Gitleaks 8.30.1** on PATH and Python 3.9+. Findings report only validated paths,
-rule IDs and line numbers. See the [scanner contract and tests](./docs/secret-scanner.md).
+> Clone `https://github.com/ChenChiWang/ai-agent-chezmoi`, then follow `setup/AGENT-SETUP.md` to bring this machine up.
 
-Read the [sync contract, configuration, roles and recovery guide](./docs/sync-v2.md).
-Do not run `chezmoi init --apply` against this public repository or copy it over
-your current agent configuration. Tests: `sh tests/test-render.sh` and
-`sh tests/test-status.sh`; real scanner tests: `python3 tests/test-scanner.py`
-and offline regression: `python3 tests/test-offline-status.py`; write/history/config
-tests: `python3 tests/test-write.py`; layout: `python3 tests/test-layout.py`;
-migration fixtures: `python3 tests/test-migration.py`
-(real commits/pushes only in temporary local fixtures); fresh-session acceptance
-against a real model: `sh tests/session-acceptance.sh claude|codex` (billed, manual)
-(Git with `--no-lazy-fetch` support, chezmoi, POSIX sh, Python 3.9+ and pinned Gitleaks required).
+**The agent does**: the read-only preflight (`setup/preflight.sh`), proposes install
+commands for missing tools and runs them after your confirmation, installs the pinned
+Gitleaks and verifies the official SHA-256, verifies the GitHub host fingerprint, runs
+`chezmoi init` and summarizes the diff, derives the parameter file, runs the
+post-deployment `doctor`, and the first `status` and `check`.
 
-The completed migration procedure (Phase 2.6/3) is archived under
-[`docs/history/`](./docs/history/migration-v2.md).
+**Only you**: paste the SSH public key into GitHub, decide whether existing settings
+may be overwritten, choose `writer` and `auto_in` (see the parameter file below), and
+approve every push. The agent never uses sudo, never widens its sandbox and never
+approves on your behalf.
 
-### Setup notes (read before enabling the agent-driven checkpoints)
+No private repository yet? See [First machine](#first-machine-no-private-repository-yet).
+The manual procedure and the result table are in [`docs/new-machine.md`](./docs/new-machine.md)
+(Traditional Chinese).
 
-Bringing up a second machine, end-to-end acceptance and the result/label table are in
-[`docs/new-machine.md`](./docs/new-machine.md) (Traditional Chinese). To let an agent do
-the bring-up, point it at [`setup/AGENT-SETUP.md`](./setup/AGENT-SETUP.md); it uses
-`setup/preflight.sh`, `setup/install-gitleaks.sh` and the engine's `doctor` command.
+## What it does
 
-Each machine needs one parameter file, `~/.config/ai-agent/sync.local.json`, that
-you write yourself (agents are told never to create it). It is never synchronized.
+One source renders the configuration of both agents:
+
+| Source (`.chezmoitemplates/ai/`) | Rendered to |
+|---|---|
+| `shared/instructions.md` + `adapters/claude.md` | `~/.claude/CLAUDE.md` |
+| `shared/instructions.md` + `adapters/codex.md` | `~/.codex/AGENTS.md` |
+| `shared/skills/<name>/SKILL.md` | `~/.claude/skills/<name>/` and `~/.agents/skills/<name>/` |
+| `shared/scripts/` (sync engine, secret scanner) | `~/.config/ai-agent/bin/` |
+| `dot_claude/settings.json` | `~/.claude/settings.json` |
+
+**Never synced**: `~/.claude.json`, `.credentials.json`, `settings.local.json`,
+`~/.codex/auth.json`, sessions / history / cache / plugins, and any `*.key`, `*.pem`,
+`*.token`. Full list in [`examples/chezmoi/.chezmoiignore`](./examples/chezmoi/.chezmoiignore).
+Credentials and MCP tokens are configured per machine.
+
+**Three agent checkpoints** (written into the shared instructions, followed by both agents):
+
+1. **Start of work**: in the first turn of every session run `status` and `check`;
+   if behind, build a plan and apply it (the remote is really probed once per day).
+2. **Recording**: a preference or rule confirmed as durable is written into the source
+   and reported as "recorded locally".
+3. **End of work**: if the source changed, build a push plan; commit and push **only
+   after you approve**.
+
+**Safety**: Gitleaks scan before every write; `in` and `push` go through a reviewable
+plan; `writer` decides which agent may publish; a plan is bound to the source state
+and is rebuilt when that changes; the engine never runs stash, reset, rebase or a
+force push.
+
+## Requirements
+
+| Tool | Requirement |
+|---|---|
+| Git | 2.45 or newer (`--no-lazy-fetch` support) |
+| chezmoi | 2.71 series tested |
+| Python | 3.9 or newer, standard library only |
+| Gitleaks | **exactly 8.30.1** (`setup/install-gitleaks.sh` installs the pinned build into `~/.local/bin`) |
+| SSH | a key that can reach the private repository, host already in `known_hosts`; HTTPS with credentials is not supported |
+
+## Parameter file `~/.config/ai-agent/sync.local.json`
+
+One per machine, never synced, mode 600. Agents do not create it on their own; only
+during the bring-up, with values you confirmed.
 
 ```json
 {
@@ -56,151 +90,112 @@ you write yourself (agents are told never to create it). It is never synchronize
 }
 ```
 
-- **`writer` is the one setting that encodes your habit.** `"claude"` or `"codex"`:
-  that agent applies and publishes, the other only records memory in the source and
-  reports what is pending. `["claude", "codex"]`: both may publish (a plan built
-  after the other agent pushed is simply rebuilt). `"any"` (or omitted): no role
-  check. `"none"`: agents never publish; you run `push` yourself without `--agent`.
-  Start with a single writer unless you know you want more.
-- **`auto_in` applies incoming changes to shared text without asking** (instructions,
-  skills, adapters only; scripts, settings and metadata still need `--approve`). Turn
-  it on only if you are the sole pusher to your private remote: anyone who can push
-  there can then change your agents' instructions on every machine without review.
-- **`plan_dir`** must be outside the source checkout and outside `.claude`, `.codex`,
-  `.agents` and `.config/ai-agent`; `~/.local/state/ai-agent/plans` is a good choice.
-  The engine creates it (mode 0700). `check` keeps a once-per-day cache there.
-- **Remote and SSH.** Use `ssh://` or `git@host:path`; HTTPS with credentials is not
-  supported. The engine ignores `~/.ssh/config` and never prompts: your key must be in
-  the SSH agent or be a default identity file (`~/.ssh/id_*`), and the host must
-  already be in `known_hosts`.
-- **Codex runs inside a sandbox** without network or HOME writes by default. There
-  `check` returns `CHECK_SKIPPED`, and recording memory needs one approved write
-  outside the workspace. Do not widen the sandbox for synchronization; make Claude
-  the writer, or run `push` yourself.
-- **Plans bind the source index.** Do not run `git status` or similar on the source
-  between `plan` and `in`/`push`, and keep the same `--message`; otherwise the plan
-  returns `BLOCKED_STALE_PLAN` and you rebuild it.
-- **Permission prompt.** Interactive Claude Code asks before running the `sync.sh`
-  command unless `permissions.allow` in `settings.json` contains
-  `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)`; the example settings include it.
+**`writer`: which agent may apply and publish**
 
-Phase 2.7 supports source under destination HOME, including
-`$HOME/.local/share/chezmoi`, with bounded managed paths and reserved deployment
-regions. See [production layout compatibility](./docs/production-layout.md).
+| Value | Meaning | Fits |
+|---|---|---|
+| `"claude"` or `"codex"` | only that agent runs `in` / `push`; the other records and reports what is pending | one primary agent (recommended start) |
+| `["claude", "codex"]` | both may; a plan built after the other agent pushed is simply rebuilt | both agents used equally |
+| `"any"` or omitted | no role check | a machine with a single agent |
+| `"none"` | agents never publish; you run `push` yourself without `--agent` | publishing always done by a human |
 
-The current daily-sync requirement is
-[agent-driven memory checkpoints](./docs/sync-v2.md#agent-driven-memory-checkpoints-2026-09-25):
-start of work, confirmed durable memory, and end of work, using the common skill and
-existing v2 approval/safety checks. The 2026-09-26 review and the
-[architecture adjustment plan](./docs/architecture-adjustment-plan.md) define the
-next changes. The Phase 4 bootstrap/launcher/guardian research is **archived and not
-maintained**: see [`archive/`](./archive/README.md) and
-[`docs/history/`](./docs/history/phase-4-roadmap.md). Do not install anything from it.
+**`auto_in`: apply incoming shared text without asking** (instructions, skills and
+adapters only; scripts, settings and metadata still need manual approval). Turn it on
+only if you are the sole pusher to your private remote: anyone who can push there
+could otherwise change your agents' instructions on every machine.
 
-The remaining instructions describe **legacy v1**. Its `status` changes source
-and index, prints diff before scanning, and its `push` does not enforce scanning.
-The v1 script is preserved for compatibility; v2 does not repair its safety gaps.
+Other fields: `profile` is `claude`, `codex` or `claude-codex`; `plan_dir` must be
+outside the source and outside `.claude`, `.codex`, `.agents` and `.config/ai-agent`;
+`remote` is `ssh://` or `git@host:path`. Codex runs in a sandbox without network or
+HOME writes by default, so its `check` returns `CHECK_SKIPPED`; make Claude the writer
+instead of widening the sandbox.
 
+## Day to day
 
-## What's inside
+Normally you type nothing: the agents run the checkpoints at the start and end of
+work. When you need the commands yourself:
 
-- 📄 [`chezmoi-claude-setup.md`](./chezmoi-claude-setup.md) — a **complete setup guide** you can hand to Claude Code to run step by step (safety rules, cross-platform hardening, secret scanning included). *Written in Traditional Chinese.*
-- 📁 [`examples/`](./examples/) — ready-to-copy templates (ignore rules, line-ending config, CLAUDE.md, settings.json)
-
-## What gets synced
-
-| Item | Description |
-|------|-------------|
-| `~/.claude/CLAUDE.md` | Global instructions (language, code style, git conventions) |
-| `~/.claude/settings.json` | statusLine / TUI and other settings |
-| `~/.claude/skills/` | Custom skills |
-| `~/.claude/commands/` `agents/` `hooks/` | Managed too, if present |
-
-## Intended exclusions
-
-- `~/.claude.json`, `~/.claude/.credentials.json` (MCP tokens, OAuth credentials)
-- `~/.claude/settings.local.json` (machine-local settings)
-- `projects/`, `sessions/`, `shell-snapshots/`, `file-history/`, `history.jsonl`
-- `cache/`, `plugins/` and other machine-local caches
-
-Credentials and MCP server tokens are **configured per machine** and not synced. See [`examples/.chezmoiignore`](./examples/.chezmoiignore).
-
-## Quick start
-
-### First machine
-
-Hand [`chezmoi-claude-setup.md`](./chezmoi-claude-setup.md) to Claude Code and follow stages 0–6 to push your settings to your own **private** GitHub repo. Core commands:
-
-```bash
-chezmoi init
-chezmoi add ~/.claude/CLAUDE.md ~/.claude/settings.json
-chezmoi add -r ~/.claude/skills
-# add .gitattributes / .chezmoiignore (see examples/), then commit & push
+```sh
+# offline: changes or drift between source and HOME
+sh ~/.config/ai-agent/bin/sync.sh status --config ~/.config/ai-agent/sync.local.json
+# new commits on the remote? (cached once a day, --force re-probes)
+sh ~/.config/ai-agent/bin/sync.sh check  --config ~/.config/ai-agent/sync.local.json --agent claude
+# read-only post-deployment self-check, 14 OK/WARN/FAIL lines
+sh ~/.config/ai-agent/bin/sync.sh doctor --config ~/.config/ai-agent/sync.local.json
+# pull: build an incoming plan (prints PLAN_ID), review, apply
+sh ~/.config/ai-agent/bin/sync.sh plan --operation in --config ~/.config/ai-agent/sync.local.json --agent claude
+sh ~/.config/ai-agent/bin/sync.sh in --config ~/.config/ai-agent/sync.local.json --agent claude --approve PLAN_ID
+# publish: build a push plan, review, push
+sh ~/.config/ai-agent/bin/sync.sh plan --operation push --config ~/.config/ai-agent/sync.local.json --agent claude --message "docs: ..."
+sh ~/.config/ai-agent/bin/sync.sh push --config ~/.config/ai-agent/sync.local.json --agent claude --approve PLAN_ID
 ```
 
-### Onboard another machine
+Do not run `git status` on the source between `plan` and `in` / `push`; the plan
+would return `BLOCKED_STALE_PLAN` and need rebuilding. Every result code and what to
+do about it is in [`docs/new-machine.md`, section 7](./docs/new-machine.md).
 
-```bash
-# macOS: brew install chezmoi   /   Linux: apt or snap install chezmoi
-chezmoi init --apply git@github.com:YOUR_NAME/dotfiles.git
+Interactive Claude Code asks before each `sync.sh` run unless `permissions.allow` in
+`settings.json` contains `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)`; the
+[example settings](./examples/chezmoi/dot_claude/settings.json) include it.
+
+## First machine (no private repository yet)
+
+`setup/AGENT-SETUP.md` assumes the private repository exists. To create it:
+
+1. Start your own **private** dotfiles repository from [`examples/chezmoi/`](./examples/chezmoi/).
+   It is a complete chezmoi source (`.chezmoiignore`, `dot_claude/`, `dot_codex/`,
+   `dot_agents/`, `dot_config/`, `.chezmoitemplates/ai/`); replace
+   `shared/instructions.md` and `dot_claude/settings.json` with your own content.
+2. If you have an existing legacy `~/.claude` setup to bring along, the engine's
+   `migration` subcommand converts it offline with a rollback; see
+   [migration readiness](./docs/history/migration-readiness.md).
+3. Every machine after that uses the agent bring-up above.
+
+**Never** run `chezmoi init --apply` against this public repository, and never copy
+it over an existing agent configuration.
+
+## Documentation map
+
+| Document | Content |
+|---|---|
+| [`setup/AGENT-SETUP.md`](./setup/AGENT-SETUP.md) | bring-up manual for an agent; each step marked "you do" or "ask the user" |
+| [`docs/new-machine.md`](./docs/new-machine.md) | bring-up and acceptance guide for humans, result-code table, cross-machine end-to-end test (zh-TW) |
+| [`docs/sync-v2.md`](./docs/sync-v2.md) | engine contract: profiles, parameter file, roles, plans, locks, recovery |
+| [`docs/secret-scanner.md`](./docs/secret-scanner.md) | scanner contract and tests |
+| [`docs/production-layout.md`](./docs/production-layout.md) | safety boundaries when the source lives under HOME |
+| [`docs/architecture-adjustment-plan.md`](./docs/architecture-adjustment-plan.md) | 2026-09-26 architecture adjustment plan and execution record (zh-TW) |
+| [`docs/implementation-status.md`](./docs/implementation-status.md) | current state and open items |
+| [`docs/history/`](./docs/history/) | completed migration procedure and phase records |
+| [`archive/`](./archive/README.md) | unmaintained bootstrap / launcher / guardian research; **do not install** |
+
+## Tests
+
+```sh
+sh tests/test-render.sh && sh tests/test-status.sh
+python3 tests/test-write.py && python3 tests/test-layout.py
+python3 tests/test-migration.py && python3 tests/test-offline-status.py
+python3 tests/test-scanner.py                    # needs the real Gitleaks 8.30.1
+sh tests/session-acceptance.sh claude|codex      # fresh-session acceptance against a real model; billed, manual
 ```
 
-## Daily sync
+Commits and pushes happen only in temporary local fixtures; the tests never touch
+your private repository.
 
-```bash
-chezmoi update        # pull latest (git pull + apply to ~/.claude, in one step)
+## Legacy v1
 
-chezmoi re-add        # pull local edits from ~/.claude back into the source
-chezmoi cd && git add -A && git commit -m "update" && git push && exit
-```
-
-> chezmoi is not a real-time sync tool — it's pull/push on demand. For multiple machines, follow the rule: **`chezmoi update` before you start, push when you're done**, and you'll avoid divergence.
-
-## Automated sync (dotfiles-sync skill)
-
-You can let Claude Code handle the sync **in-conversation** instead of typing commands, via a bundled skill ([`examples/dotfiles-sync/`](./examples/dotfiles-sync/)):
-
-- **On session start / when Claude reads the codebase** → it runs `in` (`chezmoi update`) to pull the latest.
-- **After editing `~/.claude` settings / at a milestone** → it runs `status` (shows the diff + scans for secrets), asks you to confirm, and only then runs `push`.
-
-The skill itself lives under `~/.claude/skills/`, so it is synced by chezmoi and works the same on every machine. Add a trigger to your `CLAUDE.md` so Claude invokes it at the right moments — for example:
-
-```markdown
-# Claude Code config sync
-- On session start, use the dotfiles-sync skill's `in` to pull latest settings.
-- After editing ~/.claude settings, use dotfiles-sync: `status` to show the diff,
-  then `push` only after I confirm. Never push without confirmation.
-```
-
-### How it works
-
-The skill bundles a small engine script, [`examples/dotfiles-sync/sync.sh`](./examples/dotfiles-sync/sync.sh), with three subcommands. `SKILL.md` tells Claude to invoke it like this:
-
-```
-sh "$HOME/.claude/skills/dotfiles-sync/sync.sh" <subcommand>
-```
-
-| Subcommand | What it does |
-|-----------|--------------|
-| `in` | `chezmoi update` — pull the latest and apply to `~/.claude` |
-| `status` | `chezmoi re-add` + show the staged diff + scan for secret-shaped strings (no commit) |
-| `push "<msg>"` | commit and push — Claude runs this **only after you confirm** |
-
-End to end:
-
-1. You edit settings, or a session starts.
-2. Claude follows the trigger in `CLAUDE.md` and decides to use the `dotfiles-sync` skill.
-3. `SKILL.md` loads into context; it instructs Claude to run `sh …/sync.sh <cmd>`.
-4. Claude runs that through its shell (Git Bash on Windows, `sh` on macOS/Linux), where `$HOME` resolves to the correct path on each OS.
-
-The skill doesn't run the script by itself — Claude reads `SKILL.md` and executes the command. Because both the skill and the script live under `~/.claude/skills/`, they're synced by chezmoi, so the exact same automation is available on every machine.
-
-Design note: sync is **not** automatic on process exit — there is no Claude turn at exit. Instead it runs at meaningful turns (session start, after config edits), with a human confirmation before every push.
+[`chezmoi-claude-setup.md`](./chezmoi-claude-setup.md) (Traditional Chinese) and
+[`examples/dotfiles-sync/`](./examples/dotfiles-sync/) are the first version, which
+synced `~/.claude` only: `in` / `status` / `push` wrap `chezmoi update`, `re-add` and
+git push directly. They stay for existing users, but v1 `status` modifies the source
+and index, prints the diff before scanning, and its `push` does not enforce a scan.
+New users should start with v2.
 
 ## Security notes
 
-- **No token / API key / credentials may ever enter the repo** — scan before every commit.
-- Keep your own sync repo **private**. This project is a public *template / guide* and contains no personal secrets.
+- No token, API key or credential may ever enter the repository. v2 scans before
+  every write, but ignore rules and scanning are defense in depth, not a guarantee.
+- Keep your own sync repository **private**. This project is a public template and
+  engine and contains no personal secrets.
 
 ## License
 
