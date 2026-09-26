@@ -789,10 +789,12 @@ def arguments():
     need(not a.baseline or (a.offline and a.baseline_id), 'USAGE: baseline requires offline and ID', 64)
     for value in (a.message, a.author_name, a.author_email):
         need(len(value) <= 4096 and not any(ord(c) < 32 for c in value), 'USAGE: invalid text option', 64)
-    # 角色：參數檔的 writer 決定哪個 agent 可以套用與發布；其他 agent 只能記錄、檢查、規劃。
-    writer = values.get('writer')
-    need(not (a.agent and writer and a.command in ('in', 'push') and a.agent != writer),
-         'NOT_WRITER: only the configured writer applies or publishes; report pending instead', 77)
+    # 角色：參數檔的 writer 決定哪些 agent 可以套用與發布；其他 agent 只能記錄、檢查、規劃。
+    # 沒有 --agent 的人工呼叫不受限制。
+    writer = values.get('writer', 'any')
+    allowed = set(api.AGENTS) if writer == 'any' else set() if writer == 'none' else {writer} if type(writer) is str else set(writer)
+    need(not (a.agent and a.command in ('in', 'push') and a.agent not in allowed),
+         'NOT_WRITER: this agent may not apply or publish on this machine; report pending instead', 77)
     a.config_values = values
     if a.command == 'check':
         need(not a.approve and not a.plan and not a.offline, 'USAGE: check takes no plan, approval or offline', 64)

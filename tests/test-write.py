@@ -740,6 +740,26 @@ sys.exit(10 if secret else 0)
         self.incoming('\nSecond incoming edit.\n')
         plan_file, plan_id = self.auto_plan(config)
         self.raw(['in', '--config', config, '--approve', plan_id])  # 無 --agent 的人工呼叫不受角色限制
+        # 清單：兩個 agent 都可；none：帶 --agent 一律拒絕、人工仍可；any／省略：不檢查；無效值：78。
+        self.incoming('\nThird incoming edit.\n')
+        config = self.write_config(writer=['claude', 'codex'])
+        plan_file, plan_id = self.auto_plan(config)
+        self.raw(['in', '--config', config, '--agent', 'codex', '--approve', plan_id])
+        self.incoming('\nFourth incoming edit.\n')
+        config = self.write_config(writer='none')
+        plan_file, plan_id = self.auto_plan(config)
+        for agent in ('claude', 'codex'):
+            self.assertIn('NOT_WRITER', self.raw(['in', '--config', config, '--agent', agent, '--approve', plan_id], expected=77))
+        self.raw(['in', '--config', config, '--approve', plan_id])
+        self.incoming('\nFifth incoming edit.\n')
+        config = self.write_config(writer='any')
+        plan_file, plan_id = self.auto_plan(config)
+        self.raw(['in', '--config', config, '--agent', 'codex', '--approve', plan_id])
+        for bad in (['claude', 'claude'], ['gemini'], [], 'all'):
+            self.raw(['status', '--config', self.write_config(writer=bad)], expected=78)
+        self.assertEqual(subprocess.run(['python3', str(ENGINE.with_name('scan-secrets.py')), '--config',
+                                         str(self.write_config(writer=['claude', 'codex'])), 'writer'],
+                                        capture_output=True).stdout.strip(), b'claude,codex')
 
 
 if __name__ == '__main__':

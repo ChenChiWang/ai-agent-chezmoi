@@ -28,6 +28,29 @@ Commit／push 僅在臨時本機 fixture 執行。
 Phase 2.6 新增分階段 profile、完整六個 shared skills，以及保留 rollback 的離線 legacy
 conversion；紀錄見 [docs/history](./docs/history/migration-readiness.md)。
 
+### 設定注意事項（啟用 agent 主動同步前先讀）
+
+每台機器要有一份你自己寫的參數檔 `~/.config/ai-agent/sync.local.json`（agent 被要求絕不自行建立），
+它不會被同步。欄位範例見英文 README。
+
+- **`writer` 是唯一表達使用習慣的設定。** 填 `"claude"` 或 `"codex"`：只有那個 agent 套用與發布，另一個
+  只把記憶寫進 source 並回報待發布。填 `["claude", "codex"]`：兩邊都可發布（一邊剛推完、另一邊的 plan 會
+  過期重建）。填 `"any"` 或省略：不檢查角色。填 `"none"`：agent 一律不發布，由你不帶 `--agent` 自己跑 `push`。
+  不確定就先用單一 writer。
+- **`auto_in` 會不經詢問套用共用文字的 incoming 變更**（只限 instructions、skills、adapters；腳本、settings、
+  metadata 仍要 `--approve`）。只有你是私有 repo 唯一推送者時才開：能推到那個 repo 的人，就能改所有機器上
+  agent 的指令而不經審閱。
+- **`plan_dir`** 必須在 source 之外，也不能在 `.claude`、`.codex`、`.agents`、`.config/ai-agent` 之下；建議
+  `~/.local/state/ai-agent/plans`。引擎會自己建（0700），`check` 的每日快取也放這裡。
+- **Remote 與 SSH。** 用 `ssh://` 或 `git@host:path`，不支援帶憑證的 HTTPS。引擎不讀 `~/.ssh/config`、不會
+  提示：金鑰要在 ssh-agent 裡或是預設檔名（`~/.ssh/id_*`），host 要已在 `known_hosts`。
+- **Codex 預設在 sandbox 內**，沒有網路也不能寫 HOME。在那裡 `check` 會回 `CHECK_SKIPPED`，寫記憶到 source
+  需要核准一次工作區外的寫入。不要為了同步放寬 sandbox；讓 Claude 當 writer，或自己跑 `push`。
+- **Plan 綁定 source 的 index。** `plan` 與 `in`／`push` 之間不要對 source 跑 `git status` 之類的命令，
+  `--message` 也要相同，否則會 `BLOCKED_STALE_PLAN` 要重建。
+- **每天第一個 session** 在互動模式的 Claude Code 可能會跳 `sync.sh` 的權限提示；不想每次確認就在 settings
+  允許 `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)`。
+
 Phase 2.7 支援 source 位於 destination HOME 下（例如 `$HOME/.local/share/chezmoi`），
 並保留明確 managed paths 與部署區域隔離。詳見
 [production layout 安全邊界](./docs/production-layout.md)。

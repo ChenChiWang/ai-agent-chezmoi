@@ -31,6 +31,54 @@ against a real model: `sh tests/session-acceptance.sh claude|codex` (billed, man
 The completed migration procedure (Phase 2.6/3) is archived under
 [`docs/history/`](./docs/history/migration-v2.md).
 
+### Setup notes (read before enabling the agent-driven checkpoints)
+
+Each machine needs one parameter file, `~/.config/ai-agent/sync.local.json`, that
+you write yourself (agents are told never to create it). It is never synchronized.
+
+```json
+{
+  "source": "/Users/you/.local/share/chezmoi",
+  "destination": "/Users/you",
+  "profile": "claude-codex",
+  "remote": "ssh://git@github.com/OWNER/dotfiles.git",
+  "branch": "main",
+  "plan_dir": "/Users/you/.local/state/ai-agent/plans",
+  "author_name": "you",
+  "author_email": "you@example.com",
+  "writer": "claude",
+  "auto_in": false
+}
+```
+
+- **`writer` is the one setting that encodes your habit.** `"claude"` or `"codex"`:
+  that agent applies and publishes, the other only records memory in the source and
+  reports what is pending. `["claude", "codex"]`: both may publish (a plan built
+  after the other agent pushed is simply rebuilt). `"any"` (or omitted): no role
+  check. `"none"`: agents never publish; you run `push` yourself without `--agent`.
+  Start with a single writer unless you know you want more.
+- **`auto_in` applies incoming changes to shared text without asking** (instructions,
+  skills, adapters only; scripts, settings and metadata still need `--approve`). Turn
+  it on only if you are the sole pusher to your private remote: anyone who can push
+  there can then change your agents' instructions on every machine without review.
+- **`plan_dir`** must be outside the source checkout and outside `.claude`, `.codex`,
+  `.agents` and `.config/ai-agent`; `~/.local/state/ai-agent/plans` is a good choice.
+  The engine creates it (mode 0700). `check` keeps a once-per-day cache there.
+- **Remote and SSH.** Use `ssh://` or `git@host:path`; HTTPS with credentials is not
+  supported. The engine ignores `~/.ssh/config` and never prompts: your key must be in
+  the SSH agent or be a default identity file (`~/.ssh/id_*`), and the host must
+  already be in `known_hosts`.
+- **Codex runs inside a sandbox** without network or HOME writes by default. There
+  `check` returns `CHECK_SKIPPED`, and recording memory needs one approved write
+  outside the workspace. Do not widen the sandbox for synchronization; make Claude
+  the writer, or run `push` yourself.
+- **Plans bind the source index.** Do not run `git status` or similar on the source
+  between `plan` and `in`/`push`, and keep the same `--message`; otherwise the plan
+  returns `BLOCKED_STALE_PLAN` and you rebuild it.
+- **First session of the day** may prompt for the `sync.sh` command in interactive
+  Claude Code; allow `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)` in your settings
+  if you do not want that prompt.
+
 Phase 2.7 supports source under destination HOME, including
 `$HOME/.local/share/chezmoi`, with bounded managed paths and reserved deployment
 regions. See [production layout compatibility](./docs/production-layout.md).

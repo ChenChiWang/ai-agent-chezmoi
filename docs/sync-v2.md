@@ -85,10 +85,14 @@ more; the last revision with those hooks is tagged `engine-with-cohort-hooks`.
 
 ### Roles and automatic incoming
 
-`writer` names the agent allowed to run `in` and `push`. Commands carrying
-`--agent NAME` with a different name return `NOT_WRITER` (exit 77) before any lock
-or plan lookup; `status`, `check` and `plan` are open to every agent. Without
-`--agent` (a human at a shell) no role check applies.
+`writer` says which agents may run `in` and `push` on this machine: a single agent
+name, a list of names, `"any"` (no role check, also the default when omitted) or
+`"none"` (no agent publishes; only a human without `--agent`). Commands carrying
+`--agent NAME` outside that set return `NOT_WRITER` (exit 77) before any lock or
+plan lookup; `status`, `check` and `plan` are open to every agent. Without
+`--agent` (a human at a shell) no role check applies. With several writers the
+lock still serializes writes; a plan built by one agent after another one pushed
+simply returns `BLOCKED_STALE_PLAN` and is rebuilt.
 
 `auto_in: true` lets `in --plan PLAN_FILE` run without `--approve`. The engine
 derives the approval from the plan bytes and, after the usual re-fetch, re-scan and

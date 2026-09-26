@@ -25,10 +25,11 @@ only `--config` and `--approve PLAN_ID`.
 ## Roles
 
 Pass `--agent claude` or `--agent codex` as the adapter for this product instructs.
-The parameter file's `writer` names the one agent that applies (`in`) and publishes
-(`push`). Any other agent receives `NOT_WRITER` (exit 77) for those commands and must
-report the pending work instead. Non-writers still record memory in the source, run
-`status`, `check` and `plan`, and review results.
+The parameter file's `writer` says which agents apply (`in`) and publish (`push`) on
+this machine: one name, a list, `any` or `none`. An agent outside that set receives
+`NOT_WRITER` (exit 77) for those commands and must report the pending work instead;
+it still records memory in the source, runs `status`, `check` and `plan`, and
+reviews results. Never edit `writer` yourself; it is the user's choice per machine.
 
 When the file sets `auto_in` to true, an `in` executed with `--plan PLAN_FILE` and
 no `--approve` is applied automatically **only** if the plan changes nothing but the

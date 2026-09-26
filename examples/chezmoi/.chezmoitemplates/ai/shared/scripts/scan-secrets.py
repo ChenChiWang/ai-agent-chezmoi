@@ -98,6 +98,7 @@ LOCATIONS = frozenset(
 TARGET_REGIONS = ('.claude', '.codex', '.agents', '.config/ai-agent')
 
 # 機器本地參數檔的封閉欄位集合。它提供路徑與身分，不提供任何寫入或發布授權。
+AGENTS = ('claude', 'codex')
 CONFIG_KEYS = dict(source='path', destination='path', plan_dir='path', scanner='path',
                    profile='profile', repository_profile='profile', writer='agent',
                    remote='text', branch='text', author_name='text', author_email='text',
@@ -120,14 +121,17 @@ def load_config(path):
         kind = CONFIG_KEYS[key]
         if kind == 'bool':
             ok = type(value) is bool
+        elif kind == 'agent':
+            # writer：單一 agent、agent 清單、"any"（不檢查）或 "none"（agent 一律不可發布）。
+            ok = ((type(value) is str and value in AGENTS + ('any', 'none'))
+                  or (type(value) is list and 0 < len(value) <= len(AGENTS) and len(set(value)) == len(value)
+                      and all(type(v) is str and v in AGENTS for v in value)))
         else:
             ok = type(value) is str and 0 < len(value) <= 4096 and not any(ord(c) < 32 for c in value)
             if ok and kind == 'path':
                 ok = value.startswith('/')
             elif ok and kind == 'profile':
                 ok = value in PROFILES
-            elif ok and kind == 'agent':
-                ok = value in ('claude', 'codex')
         if not ok:
             raise ValueError('config value')
     return doc
@@ -331,7 +335,7 @@ def main():
             return 78
         value = doc.get(sys.argv[3])
         if value is not None:
-            print('true' if value is True else 'false' if value is False else value)
+            print('true' if value is True else 'false' if value is False else ','.join(value) if type(value) is list else value)
         return 0
     if len(sys.argv) == 4 and sys.argv[1] == '--schema':
         files, targets = mapping(sys.argv[2])
