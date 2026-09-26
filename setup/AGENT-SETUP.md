@@ -61,6 +61,13 @@ log in to it there.
 
 ## Step 4A: join an existing private repository
 
+Before the first `chezmoi apply` on either path, the machine-local chezmoi config
+`~/.config/chezmoi/chezmoi.toml` must contain `umask = 0o022`. Without it, chezmoi
+deploys with the shell's umask (umask `002` gives group-writable `664`/`775`), and
+status, doctor and every plan then report the looser modes. Show the file if it exists,
+propose adding exactly that key, and write it after confirmation. It is local to this
+machine and is not synced.
+
 ```sh
 chezmoi init ssh://git@github.com/OWNER/dotfiles.git    # ASK THE USER for the real remote
 chezmoi diff
@@ -127,7 +134,8 @@ chezmoi diff
 Summarize the diff as a list of files that would be created or overwritten.
 `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` and `~/.claude/settings.json` are replaced
 by the rendered versions of what you merged in 4B.3, so the summary must show that
-nothing from them was lost. **ASK THE USER** whether to apply. Then:
+nothing from them was lost. Make sure the chezmoi `umask = 0o022` setting from Step 4A
+is in place. **ASK THE USER** whether to apply. Then:
 
 ```sh
 chezmoi apply

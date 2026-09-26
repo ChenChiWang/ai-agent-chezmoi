@@ -49,7 +49,7 @@ fi
 for p in "$src" "$dst" "$scanner"; do
   case "$p" in /*) ;; *) fail 64 'USAGE: explicit absolute paths required' ;; esac
 done
-for dep in git chezmoi mktemp cmp cp mkdir env grep cat rm python3; do
+for dep in git chezmoi mktemp cmp cp mkdir env grep cat rm find python3; do
   command -v "$dep" >/dev/null 2>&1 || fail 69 'MISSING_DEPENDENCY: required command unavailable'
 done
 [ -f "$scanner" ] && [ -x "$scanner" ] || fail 69 'MISSING_DEPENDENCY: reviewed scanner adapter required'
@@ -198,6 +198,10 @@ for rel in $targets; do
     case "$rel" in .config/ai-agent/bin/sync.sh|.config/ai-agent/bin/scan-secrets.py|.config/ai-agent/bin/sync-write.py|.config/ai-agent/bin/sync-migrate.py|.claude/skills/dotfiles-sync/sync.sh)
       [ -x "$dst/$rel" ] || state=mode ;;
     esac
+    # 比標準 644/755 寬鬆（group 或 other 可寫入）也要看得見；POSIX find -perm 在 macOS/Linux 皆可用
+    if [ "$state" = clean ] && [ -n "$(find "$dst/$rel" -prune \( -perm -020 -o -perm -002 \) -print)" ]; then
+      state=mode
+    fi
   fi
   if [ "$state" != clean ]; then
     drift=1; printf 'TARGET: %s %s\n' "$rel" "$state" >> "$work/report"

@@ -195,16 +195,12 @@ def normalized(snap):
     return {p: (v[0], canonical_mode(v[1])) for p, v in snap.items()}
 
 
-def same(current, value):
-    # 只差 umask 的權限（例如 664 對 644）不算變更，與 plan/status 的判斷一致
-    return current is not None and current[0] == value[0] and canonical_mode(current[1]) == canonical_mode(value[1])
-
-
-def keep_mode(current, value):
-    # 內容要更新但權限只差 umask 時，沿用現有權限，避免與 chezmoi 互相改寫
-    if current is not None and canonical_mode(current[1]) == canonical_mode(value[1]):
-        return value[0], current[1]
-    return value
+def effective_mode(current, canonical):
+    # 實際要寫入的權限：現有權限與標準相同或更嚴格（例如 600、700）就保留；
+    # 比標準寬鬆（例如 664、775、777）就收回標準 644/755。plan 與執行都用這個結果。
+    if current is not None and canonical_mode(current) == canonical and current & 0o777 & ~canonical == 0:
+        return current
+    return canonical
 
 
 def fsync_dir(path):
@@ -530,7 +526,7 @@ class Engine:
         self.scan(rendered, 'render')
         for p in self.targets:
             need(normalized({p: self.deployed[p]})[p] in (base_render[p], rendered[p]), 'DRIFT', 2)
-        self.rendered = rendered
+        self.rendered = {p: (v[0], effective_mode(self.deployed[p][1], v[1])) for p, v in rendered.items()}
         self.git('read-tree', self.head)
         for p, (content, mode) in self.candidate.items():
             oid = self.git('hash-object', '-w', '--stdin', '--no-filters', data=content).decode().strip()
@@ -547,7 +543,7 @@ class Engine:
                     remote=self.remote, branch=self.a.branch, scanner=str(self.scanner),
                     message=self.a.message, identity=[self.a.author_name, self.a.author_email],
                     state=self.before, remote_head=self.remote_head, commits=commits,
-                    baseline=summary(baseline), candidate=summary(self.candidate), rendered=summary(rendered),
+                    baseline=summary(baseline), candidate=summary(self.candidate), rendered=summary(self.rendered),
                     tree=self.candidate_tree, tools=tools)
 
     def transfer_objects(self):
@@ -596,12 +592,7 @@ class Engine:
                 f.flush()
                 os.fsync(f.fileno())
             need(self.state() == self.before, 'BLOCKED_STALE_PLAN', 68)
-            pending = []
-            for p, v in changes:
-                current = read(p)
-                if not same(current, v):
-                    pending.append((p, keep_mode(current, v)))
-            changes = pending
+            changes = [(p, v) for p, v in changes if read(p) != v]
             changes.append((self.gd / 'index', (new_index, read(self.gd / 'index')[1])))
             manifest = []
             diagnostics.mark('backup_files')
@@ -678,11 +669,12 @@ class Engine:
         if self.a.operation == 'in':
             changes = [(self.dst / p, v) for p, v in self.rendered.items()]
             if self.remote_head != self.head:
-                changes += [(self.src / p, v) for p, v in self.candidate.items()]
+                changes += [(self.src / p, (v[0], effective_mode(self.working[p][1], canonical_mode(v[1]))))
+                            for p, v in self.candidate.items()]
                 new_index = (self.iso / 'index').read_bytes()
             else:
                 new_index = read(self.gd / 'index')[0]
-            if self.remote_head == self.head and all(same(read(p), v) for p, v in changes):
+            if self.remote_head == self.head and all(read(p) == v for p, v in changes):
                 print('NO_CHANGES')
                 return
             if self.remote_head != self.head:
@@ -691,6 +683,7 @@ class Engine:
             print('OK: approved source and generated outputs applied')
             return
         new_head = self.head
+        applied = False
         if self.candidate_tree != self.git('rev-parse', self.head + '^{tree}').decode().strip():
             need(self.a.author_name and self.a.author_email, 'USAGE: author identity required', 64)
             env = self.env.copy()
@@ -707,13 +700,15 @@ class Engine:
             self.transact(new_head, [(self.dst / p, v) for p, v in self.rendered.items()],
                           (self.iso / 'index').read_bytes())
         else:
-            changes = [(self.dst / p, v) for p, v in self.rendered.items() if not same(read(self.dst / p), v)]
+            changes = [(self.dst / p, v) for p, v in self.rendered.items() if read(self.dst / p) != v]
             if changes:
                 self.transact(new_head, changes, read(self.gd / 'index')[0])
+                applied = True
             else:
                 need(self.state() == self.before, 'BLOCKED_STALE_PLAN', 68)
         if new_head == self.remote_head:
-            print('NO_CHANGES')
+            # 沒有可發布的 commit 時，寫入只可能是 plan 列出的權限修正，不能報成 NO_CHANGES
+            print('OK: generated outputs applied; nothing to publish' if applied else 'NO_CHANGES')
             return
         # Explicit expected-OID lease closes the fetch/push race. Ancestry was
         # independently checked: this can never authorize a non-fast-forward.
@@ -891,6 +886,23 @@ def doctor(args):
             report('OK' if not missing else 'FAIL', 'targets', '%d/%d deployed under %s' % (len(api.mapping(args.profile)[1]) - len(missing), len(api.mapping(args.profile)[1]), dst), '' if not missing else 'chezmoi apply (first deployment) or an approved in')
         except (ValueError, OSError):
             report('FAIL', 'layout', 'source/destination layout invalid', 'check absolute paths, symlinks and that the source is a regular Git checkout')
+        # chezmoi 沒設定 umask 時，部署權限跟著 shell 的 umask（002 會產生 664）。在 umask 000 下
+        # 詢問，才不會把引擎自己的 077 誤判成已設定。
+        rc, out, _ = run(['sh', '-c', 'umask 000 && exec chezmoi dump-config --format json'])
+        try:
+            mask = json.loads(out).get('umask') if rc == 0 else None
+        except (ValueError, AttributeError):
+            mask = None
+        if type(mask) is int and mask & 0o022 == 0o022:
+            report('OK', 'chezmoi_umask', '%03o' % mask)
+        else:
+            report('WARN', 'chezmoi_umask', 'not set; deployed modes follow the shell umask' if mask == 0 else 'unknown or allows group/other write',
+                   'add "umask = 0o022" to ~/.config/chezmoi/chezmoi.toml')
+        loose = [p for p in api.mapping(args.profile)[1]
+                 if (dst / p).is_file() and not (dst / p).is_symlink() and stat.S_IMODE((dst / p).stat().st_mode) & 0o022]
+        report('OK' if not loose else 'WARN', 'permissions',
+               'no deployed file is group/other writable' if not loose else '%d group/other writable: %s' % (len(loose), ', '.join(loose[:3]) + (' ...' if len(loose) > 3 else '')),
+               '' if not loose else 'set the chezmoi umask, then chezmoi apply (or approve the next in/push plan)')
         for name, label in (('ai-agent-sync.lock', 'writer lock'), ('ai-agent-sync-transaction', 'recovery journal'), ('index.lock', 'git index lock')):
             if (src / '.git' / name).exists():
                 report('WARN', 'source_state', label + ' present', 'inspect before any write; never delete blindly')
@@ -1070,13 +1082,25 @@ def main():
                     output.write(blob)
                 base = result['baseline'] if result['operation'] == 'push' else result['state']['source']
                 for p in engine.files:
-                    if result['candidate'][p] != base[p]:
-                        print('SOURCE: ' + p + ' before=' + base[p][0] +
-                              ' after=' + result['candidate'][p][0] +
-                              ' mode=' + oct(result['candidate'][p][1]))
+                    before, after = base[p], result['candidate'][p]
+                    if result['operation'] == 'push':
+                        # commit 只記錄內容與執行位元，umask 造成的 664 不算變更
+                        mode = canonical_mode(after[1])
+                        changed = after[0] != before[0] or mode != canonical_mode(before[1])
+                    else:
+                        # in 只在遠端領先時寫入 source，實際權限依現有權限決定
+                        mode = effective_mode(before[1], canonical_mode(after[1]))
+                        changed = (result['remote_head'] != result['state']['head']
+                                   and (after[0] != before[0] or mode != before[1]))
+                    if changed:
+                        print('SOURCE: ' + p + ' before=' + before[0] + ' after=' + after[0] + ' mode=' + oct(mode))
                 for p in engine.targets:
-                    if result['rendered'][p] != result['state']['target'][p]:
-                        print('TARGET: ' + p + ' sha256=' + result['rendered'][p][0])
+                    before, after = result['state']['target'][p], result['rendered'][p]
+                    if after != before:
+                        line = 'TARGET: ' + p + ' sha256=' + after[0]
+                        if after[1] != before[1]:
+                            line += ' mode=%o->%o' % (before[1], after[1])
+                        print(line)
                 for oid in result['commits']:
                     print('COMMIT: ' + oid)
                 print('COMMITS: ' + str(len(result['commits'])))

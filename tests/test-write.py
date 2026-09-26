@@ -68,7 +68,7 @@ sys.exit(10 if secret else 0)
 
     def apply(self):
         config = self.root / 'config.toml'
-        config.touch()
+        config.write_text('umask = 0o022\n')  # 與文件建議的本機設定一致，部署權限不受 shell umask 影響
         self.run_cmd(['chezmoi', '--config', config, '--source', self.src, '--destination', self.dst,
                       '--cache', self.root / 'cache', '--persistent-state', self.root / 'state.db',
                       '--no-tty', 'apply', '--force'])
@@ -154,27 +154,37 @@ sys.exit(10 if secret else 0)
         self.assertIn(b'NO_CHANGES', self.execute())
         self.assertEqual(before, self.state())
 
-    def test_umask_only_modes_are_neither_changes_nor_rewritten(self):
-        # 模擬 umask 002 下 chezmoi 部署出的 664/775：不算變更，寫入內容時也保留原權限（#6）
-        for p in self.dst.rglob('*'):
-            if p.is_file():
-                p.chmod(p.stat().st_mode | 0o020)
+    def test_looser_modes_are_planned_and_tightened_stricter_kept(self):
+        # 比標準寬鬆的權限（umask 002 的 664、手動的 777）列在 plan 裡並收回 644/755；
+        # 比標準嚴格的 600 保留不動
+        claude = self.dst / '.claude/CLAUDE.md'
+        engine = self.dst / '.config/ai-agent/bin/sync.sh'
+        settings = self.dst / '.claude/settings.json'
+        claude.chmod(0o664)
+        engine.chmod(0o777)
+        settings.chmod(0o600)
+        result = self.plan()
+        self.assertIn(b'TARGET: .claude/CLAUDE.md sha256=', result)
+        self.assertIn(b'mode=664->644', result)
+        self.assertIn(b'mode=777->755', result)
+        self.assertNotIn(b'.claude/settings.json', result)
+        self.assertIn(b'OK: generated outputs applied; nothing to publish', self.execute())
+        self.assertEqual(claude.stat().st_mode & 0o777, 0o644)
+        self.assertEqual(engine.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(settings.stat().st_mode & 0o777, 0o600)
         before = self.state()
-        self.plan()
-        self.assertIn(b'NO_CHANGES', self.execute())
-        self.assertEqual(before, self.state())
         self.planfile.unlink()
-        self.plan('in')
+        self.assertNotIn(b'TARGET:', self.plan('in'))
         self.assertIn(b'NO_CHANGES', self.execute('in'))
         self.assertEqual(before, self.state())
+        # in 寫入 source 時同一套規則：寬鬆的 source 檔收回 644
         self.planfile.unlink()
+        (self.src / REL).chmod(0o664)
         self.incoming()
-        self.plan('in')
+        self.assertIn(REL.encode() + b' before=', self.plan('in'))
         self.execute('in')
-        claude = self.dst / '.claude/CLAUDE.md'
-        self.assertIn('Incoming shared edit.', claude.read_text())
-        self.assertEqual(claude.stat().st_mode & 0o777, 0o664)
-        self.assertEqual((self.dst / '.config/ai-agent/bin/sync.sh').stat().st_mode & 0o777, 0o775)
+        self.assertEqual((self.src / REL).stat().st_mode & 0o777, 0o644)
+        self.assertEqual(settings.stat().st_mode & 0o777, 0o600)
 
     def test_stale_source_destination_index_branch_remote(self):
         self.edit()
@@ -698,6 +708,18 @@ sys.exit(10 if secret else 0)
         self.assertIn('OK   targets:', result.stdout); self.assertIn('OK   remote: local path', result.stdout)
         self.assertIn('OK   plan_dir:', result.stdout) if (self.root / 'plans').exists() else self.assertIn('FAIL plan_dir:', result.stdout)
         self.assertIn('DOCTOR:', result.stdout)
+        self.assertIn('WARN chezmoi_umask: not set', result.stdout)
+        self.assertIn('OK   permissions:', result.stdout)
+        # 設定 chezmoi 的 umask 後轉為 OK；部署檔變成 group 可寫入則 permissions 回報 WARN
+        chezmoi_config = self.home / '.config/chezmoi/chezmoi.toml'
+        chezmoi_config.parent.mkdir(parents=True)
+        chezmoi_config.write_text('umask = 0o022\n')
+        (self.dst / '.claude/CLAUDE.md').chmod(0o664)
+        result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
+                                capture_output=True, timeout=120, text=True)
+        self.assertIn('OK   chezmoi_umask: 022', result.stdout)
+        self.assertIn('WARN permissions: 1 group/other writable: .claude/CLAUDE.md', result.stdout)
+        (self.dst / '.claude/CLAUDE.md').chmod(0o644)
         (self.dst / '.codex/AGENTS.md').unlink()
         result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
                                 capture_output=True, timeout=120, text=True)

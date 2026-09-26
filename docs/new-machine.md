@@ -29,9 +29,13 @@ sh setup/preflight.sh
 
 ## 2. 首次部署用 chezmoi，不用引擎
 
-引擎的 `in` 要求 target 檔案已存在，所以第一次要由 chezmoi 建立：
+引擎的 `in` 要求 target 檔案已存在，所以第一次要由 chezmoi 建立。第一次 `apply` 之前，先在本機的
+chezmoi 設定固定 umask，不然 chezmoi 會照 shell 的 umask 建檔（umask `002` 會產生 group 可寫入的
+`664`／`775`），之後 status、doctor 和每個 plan 都會回報這些過寬的權限。這個設定檔只在本機，不會同步：
 
 ```sh
+mkdir -p ~/.config/chezmoi
+grep -q '^umask' ~/.config/chezmoi/chezmoi.toml 2>/dev/null || echo 'umask = 0o022' >> ~/.config/chezmoi/chezmoi.toml
 chezmoi init git@github.com:OWNER/dotfiles.git
 chezmoi diff        # 先看會覆寫什麼，特別是既有的 ~/.claude/settings.json
 chezmoi apply
@@ -47,8 +51,9 @@ sh ~/.config/ai-agent/bin/sync.sh doctor --config ~/.config/ai-agent/sync.local.
 ```
 
 `doctor` 是唯讀的：檢查工具版本、參數檔、plan_dir、source 的 39 個 mapped 檔、21 個 target、
-known_hosts 與 SSH 連線、agent 二進位、settings 的允許規則、部署引擎是否與執行中的相同。
-沒有 FAIL 再進下一節。
+known_hosts 與 SSH 連線、agent 二進位、settings 的允許規則、部署引擎是否與執行中的相同，
+以及 chezmoi 的 umask 設定（`chezmoi_umask`）和部署檔有沒有 group／other 可寫入（`permissions`）。
+沒有 FAIL 再進下一節；`chezmoi_umask` 或 `permissions` 的 WARN 照第 2 節設定 umask 後再 `chezmoi apply`。
 
 ## 4. 引擎自檢
 
@@ -108,6 +113,7 @@ sandbox 內會看到 `CHECK_SKIPPED`；同一天已有人檢查過則兩邊都�
 | `INVALID_LAYOUT`（65） | source／destination 路徑或 managed 檔案缺失 | 確認 `chezmoi apply` 已完成、路徑是絕對路徑 |
 | `BLOCKED_OVERRIDE`（65） | `~/.codex/AGENTS.override.md` 存在 | 人工檢視後移除或改名 |
 | `DRIFT`（2） | 部署檔與 source 渲染不一致（有人手動改了 target） | 把意圖改回 source，或 `chezmoi apply` 還原；新機器第一次啟動 Claude Code 後出現的見第 4 節 |
+| `DRIFT`（2）且有 `TARGET: <檔案> mode` | 部署檔權限不對：可執行檔少了執行位元，或比標準 644／755 寬鬆（group／other 可寫入） | 照第 2 節設定 chezmoi 的 umask 後 `chezmoi apply`；下一個核准的 `in`／`push` 也會把寬鬆的權限收回 |
 | `NETWORK_ERROR`（71） | 連不到 remote | 檢查 SSH 金鑰、known_hosts、網路 |
 | `CHECK_SKIPPED`（0） | sandbox 內無網路（Codex） | 正常；由 writer 端探測 |
 | `BLOCKED_STALE_PLAN`（68） | plan 建立後狀態變了（含 `--message` 不同、對 source 跑過 `git status`） | 重建 plan |

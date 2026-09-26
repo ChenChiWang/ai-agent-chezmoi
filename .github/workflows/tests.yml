@@ -64,9 +64,9 @@ jobs:
           install -d -o ci -g ci /home/ci/repo
           git -c safe.directory='*' -C "$src" archive --format=tar HEAD | tar -x -C /home/ci/repo
           chown -R ci:ci /home/ci/repo
-      # su - 經過 pam_umask，同名主要群組的使用者會拿到 umask 002。同步引擎在 002 下的行為已修正（#6），
-      # 並由 test-write.py 的回歸測試直接模擬 664 覆蓋；遷移工具在 002 下仍會失敗（#8），修好前固定為 022。
+      # su - 經過 pam_umask，同名主要群組的使用者會拿到 umask 002：這個 job 刻意在 002 下測試，
+      # ubuntu/macOS job 則是 022，兩種 umask 都有覆蓋。
       - name: Install pinned tools and run tests
         shell: wsl-bash {0}
         run: |
-          su - ci -c 'umask 022 && cd ~/repo && sh .github/ci/install-tools.sh && PATH="$HOME/.local/bin:$PATH" sh .github/ci/run-tests.sh'
+          su - ci -c 'echo "umask $(umask)" && cd ~/repo && sh .github/ci/install-tools.sh && PATH="$HOME/.local/bin:$PATH" sh .github/ci/run-tests.sh'
