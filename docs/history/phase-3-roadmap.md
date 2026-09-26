@@ -64,7 +64,7 @@ The user classified the production layout mismatch as **Phase 2.7 Production
 Layout Compatibility**, authorizing changes and isolated validation in this public
 repository only. No private relocation/modification, Phase 3 continuation, commit,
 or push is authorized in this task. Complete review and stop. See
-[production-layout.md](production-layout.md) for boundaries and verification.
+[production-layout.md](../production-layout.md) for boundaries and verification.
 Phase 2.7 review has passed within its isolated-fixture scope; work is stopped
 pending user acceptance and explicit continuation, without rerunning production
 preflight in this public-only task.
@@ -171,7 +171,7 @@ Evidence is in the public source:
 
 - [Fixed scanner mappings](../examples/chezmoi/.chezmoitemplates/ai/shared/scripts/scan-secrets.py)
 - [Required HEAD layout, target snapshots and rendering](../examples/chezmoi/.chezmoitemplates/ai/shared/scripts/sync-write.py)
-- [Accepted fixed-profile sync contract](sync-v2.md)
+- [Accepted fixed-profile sync contract](../sync-v2.md)
 
 These are limits of the accepted Phase 2.5 scope, not evidence that its existing
 fixture tests failed. No private regression test was run and no 3D pass is claimed.

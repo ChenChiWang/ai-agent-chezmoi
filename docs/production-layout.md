@@ -86,6 +86,6 @@ scanning or modification. Existing sibling-root scanner, offline status, render,
 status, migration and write suites remain regression gates.
 
 Test results and review status are recorded in
-[implementation-status.md](implementation-status.md). Fixture acceptance is not
+[implementation-status-2026-09-25.md](history/implementation-status-2026-09-25.md). Fixture acceptance is not
 actual Claude loading, production inventory classification, statusLine validation,
 or a production 3D PASS. No private source is read during Phase 2.7.

@@ -15,7 +15,9 @@ v2 已支援 **離線 `status`、核准計畫、安全 `in` 與限定範圍的 `
 必須指定 source、destination；預設使用內附 scanner adapter，需要 PATH 上的 **Gitleaks 8.30.1** 與 Python 3.9+。
 掃描結果只顯示已驗證的路徑、規則 ID 與行號，詳見[scanner 契約與測試](./docs/secret-scanner.md)。
 
-請先讀 [`docs/migration-v2.md`](./docs/migration-v2.md)。這是供隔離驗證的範本，尚不可直接替換現有 skill。
+v2 現在有 `claude`／`codex`／`claude-codex` 三種 profile、機器本地參數檔 `sync.local.json`（`--config`）、
+遠端新鮮度 `check`、指定 writer 的 agent 角色，以及只限共用文字的 `auto_in`。詳見
+[同步契約](./docs/sync-v2.md)；已完成的遷移程序封存在 [`docs/history/`](./docs/history/migration-v2.md)。
 不可對本公開 repo 執行 `chezmoi init --apply`，也不可整包覆蓋現有 agent 設定。
 測試：`sh tests/test-render.sh`、`sh tests/test-status.sh`；正式 scanner 測試：`python3 tests/test-scanner.py`。
 需要 Git、chezmoi、POSIX sh、Python 3.9+；正式 scanner 測試另需固定版本 Gitleaks。
@@ -23,9 +25,8 @@ Git 必須支援 `--no-lazy-fetch`；離線回歸測試：`python3 tests/test-of
 `python3 tests/test-write.py`；migration fixture：`python3 tests/test-migration.py`。
 Commit／push 僅在臨時本機 fixture 執行。
 
-Phase 2.6 新增 `claude`／`claude-codex` 分階段 profile、完整六個 shared skills，
-以及保留 rollback 的離線 legacy conversion。請閱讀
-[migration readiness 與隔離測試範圍](./docs/migration-readiness.md)。
+Phase 2.6 新增分階段 profile、完整六個 shared skills，以及保留 rollback 的離線 legacy
+conversion；紀錄見 [docs/history](./docs/history/migration-readiness.md)。
 
 Phase 2.7 支援 source 位於 destination HOME 下（例如 `$HOME/.local/share/chezmoi`），
 並保留明確 managed paths 與部署區域隔離。詳見

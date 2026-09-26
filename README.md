@@ -9,26 +9,26 @@ The intended scope is portable settings and capabilities. Ignore rules are defen
 ## Experimental Claude Code + Codex shared templates (v2)
 
 [`examples/chezmoi/`](./examples/chezmoi/) adds one shared source for instructions,
-skills and a neutral engine. v2 supports **offline `status`, approval plans, safe
-`in`, and scoped `push`**. It requires explicit source/destination paths
-and uses the bundled scanner adapter with **Gitleaks 8.30.1** on PATH and Python 3.9+.
-Findings report only validated paths, rule IDs and line numbers. See the
-[scanner contract and tests](./docs/secret-scanner.md).
+skills and a neutral engine. v2 supports **offline `status`, remote `check`,
+approval plans, safe `in`, and scoped `push`** for the `claude`, `codex` and
+`claude-codex` profiles. Parameters come from a machine-local `sync.local.json`
+(`--config`); the file names the one `writer` agent and may enable `auto_in` for
+shared-text-only incoming changes. The bundled scanner adapter needs
+**Gitleaks 8.30.1** on PATH and Python 3.9+. Findings report only validated paths,
+rule IDs and line numbers. See the [scanner contract and tests](./docs/secret-scanner.md).
 
-Read [`docs/migration-v2.md`](./docs/migration-v2.md) before using it. This is a
-development template; private migration and legacy caller cutover remain paused.
-Read the [sync contract, approval and recovery guide](./docs/sync-v2.md).
+Read the [sync contract, configuration, roles and recovery guide](./docs/sync-v2.md).
 Do not run `chezmoi init --apply` against this public repository or copy it over
 your current agent configuration. Tests: `sh tests/test-render.sh` and
 `sh tests/test-status.sh`; real scanner tests: `python3 tests/test-scanner.py`
-and offline regression: `python3 tests/test-offline-status.py`; write/history tests:
-`python3 tests/test-write.py`; migration fixtures: `python3 tests/test-migration.py`
+and offline regression: `python3 tests/test-offline-status.py`; write/history/config
+tests: `python3 tests/test-write.py`; layout: `python3 tests/test-layout.py`;
+migration fixtures: `python3 tests/test-migration.py`
 (real commits/pushes only in temporary local fixtures)
 (Git with `--no-lazy-fetch` support, chezmoi, POSIX sh, Python 3.9+ and pinned Gitleaks required).
 
-Phase 2.6 adds staged `claude` / `claude-codex` profiles, all six shared skills,
-and an offline legacy conversion with retained rollback. See
-[migration readiness and fixture acceptance](./docs/migration-readiness.md).
+The completed migration procedure (Phase 2.6/3) is archived under
+[`docs/history/`](./docs/history/migration-v2.md).
 
 Phase 2.7 supports source under destination HOME, including
 `$HOME/.local/share/chezmoi`, with bounded managed paths and reserved deployment

@@ -1,7 +1,7 @@
 # Claude Code + Codex shared configuration — experimental v2
 
 v2 provides an opt-in template, offline status, approved `in` and `push`.
-See [the write/approval/recovery contract](sync-v2.md) and
+See [the write/approval/recovery contract](../sync-v2.md) and
 [Phase 2.6 migration readiness](migration-readiness.md) for the implemented staged
 profiles, six-skill conversion and reversible bootstrap. It is **not an automatic
 replacement for an installed v1 workflow**; private migration remains paused. No home-directory deployment, private
@@ -56,7 +56,7 @@ sh examples/chezmoi/.chezmoitemplates/ai/shared/scripts/sync.sh status \
 All arguments must be absolute paths. Source and destination must exist. Phase 2.7
 allows source beneath destination (for example `$HOME/.local/share/chezmoi`) only
 outside reserved deployment namespaces. Equal roots and destination inside source
-remain forbidden. See [production layout boundaries](production-layout.md).
+remain forbidden. See [production layout boundaries](../production-layout.md).
 The source must be the root of a regular Git checkout containing
 the complete v2 layout; linked Git worktrees are not supported yet. This engine
 does not call `chezmoi source-path` or default to the current project or private
@@ -109,7 +109,7 @@ no baseline/ignore suppressions, and inline `gitleaks:allow` comments disabled.
 Only approved snapshots are read; reports show fixed relative paths, known rule
 IDs and positive line numbers. Secret values and raw tool logs never reach normal
 output. Full contract, integrity information and limitations are in
-[secret-scanner.md](secret-scanner.md).
+[secret-scanner.md](../secret-scanner.md).
 
 `--scanner` remains an optional trusted executable override for reviewed adapters
 and isolated tests. The protocol now requires two arguments: `SNAPSHOT REPORT`.

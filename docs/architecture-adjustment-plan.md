@@ -116,7 +116,27 @@
 - 不把 `push` 納入任何自動化。
 - 不在本計畫完成前把新的 Required memory checkpoints 部署到全域 CLAUDE.md。
 
-## 5. 附錄：本次複查的程式碼問題
+## 5. 執行紀錄（2026-09-26）
+
+全部 A–H 已在公開工作樹完成並分批 commit 到 main（未 push、未部署到私有 source）。
+
+| 項目 | 結果 | 與計畫的差異 |
+| --- | --- | --- |
+| A | 引擎／政策／文件三個快照 commit；`bootstrap/` 與 13 個測試移至 `archive/`，phase-4 文件移至 `docs/history/`，封存測試從新位置全數通過 | 無 |
+| B | `--config` 讀取 `sync.local.json`，closed key set，命令列優先；`plan_dir` 自動產生 plan 檔並以 `PLAN_ID` 尋回；`.chezmoiignore` 排除 | 無 |
+| C | `auto_in` 只在 `in`、只限共用文字來源；否則 `PENDING_APPROVAL` 77；`push` 無自動模式 | 無 |
+| D1 | `check`：`UP_TO_DATE`／`BEHIND n`／`AHEAD n`／`DIVERGED`，不掃描不寫 plan；有 `plan_dir` 時記錄 `last-check.json` | `AHEAD`／`DIVERGED` 為新增結果 |
+| D2 | plan 路徑經目錄別名正規化；只拒絕 source 與四個部署區域 | 原測試 `test_plan_file_cannot_be_written_inside_home` 改為新規則 |
+| D3 | `cli()` 補 AttributeError／IndexError；分類改 `isinstance`；`INVALID_PLAN`、cohort metadata 型別檢查 | 無 |
+| D4 | `--profile`、`--repository-profile`、`--config` 重複給值回 64 | 無 |
+| E | `writer` 與 `--agent`：非 writer 的 `in`／`push` 回 `NOT_WRITER` 77；兩個 adapter 補角色與 sandbox 說明 | 無 |
+| F | `check` 每日一次（`CHECKED_TODAY`），`--force` 重探；instructions 縮為三句 | 每日狀態放在 `plan_dir/last-check.json`，未另設 state 目錄 |
+| G | 現行契約只留 sync-v2、secret-scanner、production-layout、本計畫與精簡後的 implementation-status；其餘移入 `docs/history/`；Codex 0.157.0 以二進位字串確認 skill 路徑 | 未做真實 Codex runtime 重驗 |
+| H | B/D2/D3 與 C/D1/E 因同時完成而合併為引擎、skill 兩個 commit | 批次數少於計畫 |
+
+尚未執行：部署到私有 source 與 HOME（需另行 reviewed push）；真實 Claude／Codex session 的主動觸發驗收。
+
+## 6. 附錄：本次複查的程式碼問題
 
 引擎（需修，對應 D）：
 - `sync-write.py:1022`：例外白名單漏 AttributeError／IndexError。

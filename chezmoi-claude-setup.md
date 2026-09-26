@@ -2,7 +2,7 @@
 
 > 本文件交給 Claude Code 執行。請逐步進行,每個階段完成後回報結果再繼續。
 > 本文為 **legacy v1 建置指南**，命令以 Windows 為例；先確認實際執行端與 shell，不得假設目前主機是 Windows。
-> Claude Code + Codex 共用 v2 請讀 [遷移指南](docs/migration-v2.md)。Phase 1 只做隔離驗證，不授權依本文部署、連線或推送。
+> Claude Code + Codex 共用 v2 請讀 [遷移指南](docs/history/migration-v2.md)。Phase 1 只做隔離驗證，不授權依本文部署、連線或推送。
 > 舊引擎 status 會修改 source/index，且 push 不強制 secret 掃描；保留入口不代表已消除風險。
 
 ## 目標

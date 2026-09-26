@@ -35,7 +35,7 @@ the compatibility default is dual. Both include all six shared skills and
 Claude-only settings. The scanner owns the mapping and wrapper schema consumed by
 shell/Python engines. Normal sync still rejects missing output files or source
 layout changes; the separate approved converter handles first deployment and staged
-expansion. See [Phase 2.6 migration readiness](migration-readiness.md) for offline
+expansion. See [Phase 2.6 migration readiness](history/migration-readiness.md) for offline
 baseline, conversion, local regression, rollback and later Codex expansion.
 
 Git and target selection are explicit; the engine never calls `chezmoi source-path`.
@@ -90,6 +90,15 @@ plan comparison, applies it only when every changed source file is shared text
 change returns `PENDING_APPROVAL` (exit 77) and prints the `PLAN_ID` to approve
 explicitly. `push` has no automatic mode. Every other safety gate (scanner, drift,
 locks, journals, staged changes, history scope) is unchanged.
+
+### Codex skill discovery (0.157.0)
+
+The deployed Codex targets are `.codex/AGENTS.md` and `.agents/skills/<name>/SKILL.md`.
+Runtime discovery of all six skills was recorded with Codex 0.155.1 (Phase 3). The
+installed 0.157.0 binary still references both `.agents/skills` and
+`$CODEX_HOME/skills` as skill locations (binary string inspection on 2026-09-26, not
+a runtime session); the mapping is therefore unchanged, and a fresh runtime
+confirmation remains a manual acceptance step.
 
 ### check
 
@@ -351,7 +360,8 @@ is unconfirmed, not synchronized. A clean worktree can still have unpublished co
 Project-only memory outside the mapping is not publishable through v2. Never save raw
 chat, credentials, session state or project trust as shared memory.
 
-Validation results for this change are recorded in implementation-status. This is a
+Validation results for this change are recorded in the archived
+[implementation status](history/implementation-status-2026-09-25.md). This is a
 public instruction/skill change only; production has not received these triggers.
 Model-driven automatic invocation is a behavioral requirement, not a deterministic
 process hook; no new Claude/Codex model runtime qualification is claimed here.
