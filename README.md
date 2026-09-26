@@ -24,7 +24,8 @@ your current agent configuration. Tests: `sh tests/test-render.sh` and
 and offline regression: `python3 tests/test-offline-status.py`; write/history/config
 tests: `python3 tests/test-write.py`; layout: `python3 tests/test-layout.py`;
 migration fixtures: `python3 tests/test-migration.py`
-(real commits/pushes only in temporary local fixtures)
+(real commits/pushes only in temporary local fixtures); fresh-session acceptance
+against a real model: `sh tests/session-acceptance.sh claude|codex` (billed, manual)
 (Git with `--no-lazy-fetch` support, chezmoi, POSIX sh, Python 3.9+ and pinned Gitleaks required).
 
 The completed migration procedure (Phase 2.6/3) is archived under

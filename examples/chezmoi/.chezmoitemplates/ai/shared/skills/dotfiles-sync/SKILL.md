@@ -66,8 +66,9 @@ mean the remote is current. Then run `check`: it fetches into quarantine and rep
 The remote is probed once per local day per machine: `CHECKED_TODAY` repeats the
 earlier result and needs no further action at start; use `--force` only when the
 user asks for a fresh probe or at the finish checkpoint.
-If network or inspection permission is missing, request exactly that and report
-remote freshness as unknown. On `UP_TO_DATE`, begin work without any write or empty
+`CHECK_SKIPPED` means the sandbox has no network: report remote freshness as
+unknown and continue; do not request sandbox escalation for it. If inspection
+permission itself is missing, request exactly that. On `UP_TO_DATE`, begin work without any write or empty
 commit. On `BEHIND`, create an incoming plan, review its actual content and
 identities, then execute `in` under `auto_in` or existing explicit authorization;
 otherwise present the concrete plan and request approval. `AHEAD` means unpublished

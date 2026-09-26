@@ -823,6 +823,15 @@ def check(args):
                 print('CHECKED_TODAY: ' + time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(record['checked'])))
                 print('REMOTE: ' + record['result'] + ' (previous result; use --force to refresh)')
                 return 0
+            if os.environ.get('CODEX_SANDBOX_NETWORK_DISABLED') == '1' and type(record.get('checked')) is int and type(record.get('result')) is str:
+                # 沙箱內無網路：不嘗試連線，回報上次（非今日）的結果與日期供參考。
+                print('CHECK_SKIPPED: sandbox network disabled; remote freshness unknown')
+                print('REMOTE: ' + record['result'] + ' (previous result from '
+                      + time.strftime('%Y-%m-%d', time.localtime(record['checked'])) + ')')
+                return 0
+    if os.environ.get('CODEX_SANDBOX_NETWORK_DISABLED') == '1':
+        print('CHECK_SKIPPED: sandbox network disabled; remote freshness unknown')
+        return 0
     temporary = tempfile.TemporaryDirectory(prefix='ai-agent-check-', dir='/tmp')
     try:
         engine = Engine(args, Path(temporary.name))

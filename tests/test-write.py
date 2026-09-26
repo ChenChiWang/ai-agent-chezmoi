@@ -650,6 +650,24 @@ sys.exit(10 if secret else 0)
         self.assertIn('REMOTE: DIVERGED', self.raw(['check', '--config', config, '--force']))
         self.assertEqual(self.git(self.src, 'status', '--porcelain'), '')
 
+    def test_check_skipped_inside_network_disabled_sandbox(self):
+        config = self.write_config()
+        env = dict(self.env, CODEX_SANDBOX_NETWORK_DISABLED='1')
+        shutil.rmtree(self.remote)  # 若真的嘗試連線會失敗；CHECK_SKIPPED 必須在連線前回傳。
+        result = subprocess.run(['sh', str(ENGINE), 'check', '--config', str(config), '--agent', 'codex'],
+                                env=env, cwd=self.root, capture_output=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(b'CHECK_SKIPPED', result.stdout)
+        self.assertFalse((self.root / 'plans/last-check.json').exists())
+        # 今日快取存在時仍優先回 CHECKED_TODAY；非今日快取則附上舊結果與日期。
+        (self.root / 'plans').mkdir(exist_ok=True)
+        (self.root / 'plans/last-check.json').write_text(json.dumps(dict(checked=86400 * 2, result='UP_TO_DATE')))
+        result = subprocess.run(['sh', str(ENGINE), 'check', '--config', str(config), '--agent', 'codex'],
+                                env=env, cwd=self.root, capture_output=True, timeout=120)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn(b'CHECK_SKIPPED', result.stdout)
+        self.assertIn(b'previous result from 1970-01-0', result.stdout)
+
     def test_check_explicit_options_and_network_failure(self):
         base = ['check', '--source', self.src, '--destination', self.dst, '--remote', self.remote,
                 '--branch', 'main', '--scanner', self.scanner]

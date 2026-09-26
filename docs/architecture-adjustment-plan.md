@@ -159,9 +159,30 @@ README 摘要非「實質工作」而跳過）；指示改為無條件、列出�
 用現有設定繼續」後才讀專案檔，PASS；有當日快取時 `check` 回 `CHECKED_TODAY`，不碰網路，PASS。兩次都未嘗試
 跳出 sandbox。注意 `codex exec` 在非 TTY 下會等 stdin，測試需 `< /dev/null`。
 
+**Sandbox 內的 check（2026-09-26）**：Codex sandbox 匯出 `CODEX_SANDBOX_NETWORK_DISABLED=1`（已實測），
+`check` 據此不嘗試連線，回 `CHECK_SKIPPED`（exit 0）並附上舊快取結果與日期；不寫快取。維持「Codex 不請求跳出
+sandbox」。新增 `tests/session-acceptance.sh`（呼叫真實模型、有費用、不在預設測試集）固化開工檢查驗收流程。
+
 尚未執行：互動模式下建議在 settings.json 加 `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)` 允許清單以免每次提示。
 
-## 6. 附錄：本次複查的程式碼問題
+## 6. 待討論：多 writer 與使用者習慣
+
+目前 `writer` 是單一 agent 名稱，由本機參數檔決定；這是每台機器的偏好設定，不是架構限制。作為公開專案，
+應讓不同習慣的使用者用同一個參數檔表達，而不是改程式碼。提案：
+
+| `writer` 值 | 意義 | 適合的習慣 |
+| --- | --- | --- |
+| `"claude"` 或 `"codex"` | 只有該 agent 可 `in`／`push`，其他 agent 記錄與回報 | 一主一輔（目前預設） |
+| `["claude", "codex"]` | 清單內任一 agent 皆可套用與發布；lock 序列化，plan 過期時重建 | 兩邊平等使用 |
+| `"any"` 或省略 | 不做角色檢查 | 單一 agent 的機器、或信任所有 agent |
+| `"none"` | 任何帶 `--agent` 的 `in`／`push` 都拒絕，只有人工（不帶 `--agent`）可發布 | 希望 agent 只記錄、發布永遠由人做 |
+
+引擎改動：`load_config` 接受字串或字串清單；`NOT_WRITER` 判斷改為「`--agent` 不在允許集合」。多 writer 的
+代價是 BLOCKED_STALE_PLAN 變多（A 建 plan 後 B 先 push），引擎已安全處理，只需重建 plan。`auto_in` 與角色獨立。
+Codex 當 writer 時仍受其 sandbox 限制，每次寫入與 push 需核准跳出。
+
+## 7. 附錄：本次複查的程式碼問題
+
 
 引擎（需修，對應 D）：
 - `sync-write.py:1022`：例外白名單漏 AttributeError／IndexError。

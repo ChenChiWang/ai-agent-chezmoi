@@ -116,6 +116,10 @@ With `plan_dir`, a successful check records `plan_dir/last-check.json`; a later
 `check` on the same local calendar day prints `CHECKED_TODAY` with the previous
 result instead of fetching, unless `--force` is given. This is the intended
 start-of-work freshness probe; a full incoming plan is only needed on `BEHIND`.
+Inside a sandbox that exports `CODEX_SANDBOX_NETWORK_DISABLED=1`, `check` does not
+attempt the fetch: it prints `CHECK_SKIPPED` (exit 0), repeats an older cached
+result with its date when one exists, and writes no cache. The agent reports remote
+freshness as unknown and continues; the configured writer probes on its own start.
 
 ## Commands and approval
 
