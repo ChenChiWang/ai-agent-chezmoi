@@ -50,7 +50,7 @@ unrelated source contents are neither interpreted nor certified by the engine.
 
 ## Plans, backups, locks and rollback
 
-Plans and migration backup packages remain outside both source and destination.
+Migration backup packages remain outside both source and destination. Since 2026-09-26 a plan file only needs to be outside the source checkout and the deployment regions; see [sync-v2](sync-v2.md#local-configuration-file).
 For destination HOME, a path under HOME is therefore invalid, even if ignored by
 Git. Choose an explicitly approved, owner-private external location. A temporary
 directory suffices for fixtures but is not a durable production rollback strategy.

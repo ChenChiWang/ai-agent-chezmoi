@@ -6,8 +6,37 @@ description: Inspect, plan, and safely synchronize a migrated shared Claude Code
 # Shared configuration sync (v2)
 
 Use the single engine at `${AI_AGENT_HOME:-$HOME/.config/ai-agent}/bin/sync.sh`.
-Select the source/destination from the task or reviewed configuration. Never infer
-that the current project is the dotfiles repository. This is an agent-driven workflow
+
+## Parameters
+
+Read the machine-local parameter file `${AI_AGENT_HOME:-$HOME/.config/ai-agent}/sync.local.json`
+and pass it with `--config`. It supplies `source`, `destination`, `profile`,
+`repository_profile`, `remote`, `branch`, `plan_dir`, `scanner`, `author_name`,
+`author_email`, `writer` and `auto_in`. Explicit options override it. If the file is
+missing or lacks an essential value, ask the user for exactly that value; never guess
+roots, never treat the current project as the dotfiles repository, and never create
+the file yourself. The file is machine-local, outside synchronization, and provides
+identity only: it is not authorization to apply or publish. `plan_dir` must be outside
+the source checkout and outside `.claude`, `.codex`, `.agents` and `.config/ai-agent`;
+`$HOME/.local/state/ai-agent/plans` is a suitable location. With `plan_dir`, `plan`
+creates a new file there and prints `PLAN_FILE` and `PLAN_ID`; `in`/`push` then need
+only `--config` and `--approve PLAN_ID`.
+
+## Roles
+
+Pass `--agent claude` or `--agent codex` as the adapter for this product instructs.
+The parameter file's `writer` names the one agent that applies (`in`) and publishes
+(`push`). Any other agent receives `NOT_WRITER` (exit 77) for those commands and must
+report the pending work instead. Non-writers still record memory in the source, run
+`status`, `check` and `plan`, and review results.
+
+When the file sets `auto_in` to true, an `in` executed with `--plan PLAN_FILE` and
+no `--approve` is applied automatically **only** if the plan changes nothing but the
+shared text sources (instructions, the six skills, the two adapters). Any change to
+scripts, wrappers, settings or metadata returns `PENDING_APPROVAL` (exit 77) and needs
+an explicit `--approve PLAN_ID` after review. `push` never has an automatic mode.
+
+This is an agent-driven workflow
 using Shared Core instructions and this common skill, not a CLI launch callback.
 Do not create launchers, guardians, background services or lifecycle hooks for it.
 The engine requires an already migrated v2 profile; installation and private
@@ -25,17 +54,20 @@ this skill does not detect all native/IDE sessions or fix the historical loading
 ## Three memory checkpoints
 
 **Start:** On the first turn of a new work session, before substantive work, invoke
-this skill without waiting for a reminder. Establish the reviewed source, destination,
-profile, remote/branch and authorization scope; ask for missing essentials rather
-than guessing roots or silently treating the project as the source. Run local
+this skill without waiting for a reminder. Read the parameter file; ask only for
+missing essentials rather than guessing roots or silently treating the project as
+the source. Run local
 `status`. It is offline and only describes scoped local state: `NO_CHANGES` does not
-mean the remote is current. Create an incoming plan to check the remote when inspection
-is permitted; otherwise proactively request the specific missing network/inspection
-approval and report remote freshness as unknown. Review its actual content and identities. If the candidate
-and deployment are unchanged, begin work without a write or empty commit. Otherwise
-execute approved `in` only within existing explicit authorization; if it is missing,
-present the concrete plan and request approval to apply it. Do not block unrelated work waiting
-for optional sync; state that existing memory is being used and freshness is unknown.
+mean the remote is current. Then run `check`: it fetches into quarantine and reports
+`UP_TO_DATE`, `BEHIND n`, `AHEAD n` or `DIVERGED` without scanning or writing a plan.
+If network or inspection permission is missing, request exactly that and report
+remote freshness as unknown. On `UP_TO_DATE`, begin work without any write or empty
+commit. On `BEHIND`, create an incoming plan, review its actual content and
+identities, then execute `in` under `auto_in` or existing explicit authorization;
+otherwise present the concrete plan and request approval. `AHEAD` means unpublished
+local commits: report them for the finish checkpoint. `DIVERGED` requires the user.
+Do not block unrelated work waiting for optional sync; state that existing memory is
+being used and freshness is unknown.
 
 **During work:** Record only confirmed, durable preferences/rules/decisions within
 editing authorization. Use `.chezmoitemplates/ai/shared/instructions.md` for portable
@@ -49,10 +81,11 @@ publication. Writing a source file is recorded locally, not synced. Apply/publis
 only under the same reviewed-plan contract below; do not infer push authorization
 from permission to remember something. Do not overwrite another session's edits.
 
-**Finish:** At task completion or when the user ends work, check scoped local state,
-source edits and any previously known pending publication. If necessary and permitted,
-use a push plan to identify outbound commits/remote divergence; a clean worktree or
-local status cannot prove all commits were published. Review all outbound content,
+**Finish:** At task completion or when the user ends work, run `status` for scoped
+local state and source edits, and `check --force` for unpublished commits (`AHEAD`);
+a clean worktree or local status cannot prove all commits were published. If there
+are source edits or outbound commits and this agent is the writer, use a push plan.
+Review all outbound content,
 not only this task's memory edits. If there is nothing to publish, do not execute an
 empty publication or create an empty commit. If authorized, execute the reviewed push;
 otherwise report recorded changes/pending approval or the blocker. Checkpoint retries
@@ -83,11 +116,17 @@ Do not use migration-only offline baseline mode to bypass an unavailable remote.
 ## Existing v2 plan contract
 
 ```sh
-sh "$engine" status --source "$sync_source" --destination "$sync_destination" --profile "$sync_profile"
-sh "$engine" plan --operation in \
-  --source "$sync_source" --destination "$sync_destination" --profile "$sync_profile" \
-  --remote "$approved_remote_url" --branch "$sync_branch" --plan "$plan_file"
+config="${AI_AGENT_HOME:-$HOME/.config/ai-agent}/sync.local.json"
+sh "$engine" status --config "$config" --agent "$this_agent"
+sh "$engine" check --config "$config" --agent "$this_agent"
+sh "$engine" plan --operation in --config "$config" --agent "$this_agent"
+sh "$engine" in --config "$config" --agent "$this_agent" --plan "$plan_file"   # auto_in, shared text only
+sh "$engine" in --config "$config" --agent "$this_agent" --approve "$reviewed_plan_id"
 ```
+
+Every option can still be given explicitly instead of, or in addition to, the file:
+`--source`, `--destination`, `--profile`, `--repository-profile`, `--remote`,
+`--branch`, `--plan`, `--scanner`, `--author-name`, `--author-email`.
 
 For publication, choose `plan --operation push`. Supply explicit `--author-name`,
 `--author-email` and optionally `--message` for a new commit. Plans are private new

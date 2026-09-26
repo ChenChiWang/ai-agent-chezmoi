@@ -52,9 +52,59 @@ transaction block the operation. Unrelated unstaged/untracked files are untouche
 No stash/reset/rebase, global `add`, clean/smudge filter, diff driver, source hook,
 arbitrary source template execution, or unrestricted chezmoi apply occurs.
 
+## Local configuration file
+
+Since 2026-09-26 the engine accepts `--config ABS_JSON`, a machine-local parameter
+file (conventionally `$HOME/.config/ai-agent/sync.local.json`, excluded from
+synchronization by `.chezmoiignore`). It is owner-controlled, must not be group or
+world writable, and has a closed key set: `source`, `destination`, `profile`,
+`repository_profile`, `remote`, `branch`, `plan_dir`, `scanner`, `author_name`,
+`author_email`, `writer` (`claude` or `codex`) and `auto_in` (boolean). Unknown keys,
+relative paths or invalid values return `INVALID_CONFIG` (exit 78). Explicit options
+always override the file. The file resolves *where* to sync; it never proves human
+authorization for a write or publication.
+
+With `plan_dir`, `plan` creates a fresh owner-only file
+`plan_dir/sync-plan-<op>-<utc>-<random>.json` and prints `PLAN_FILE` and `PLAN_ID`;
+`in` and `push` locate the approved file by `--approve PLAN_ID` when `--plan` is
+omitted (`PLAN_NOT_FOUND`, exit 66, otherwise). Plan files are resolved through
+directory aliases such as macOS `/tmp`; the file itself must not be a symlink. A
+plan must be outside the source checkout and outside the `.claude`, `.codex`,
+`.agents` and `.config/ai-agent` regions of the destination; other locations under
+HOME are allowed.
+
+Malformed plan documents return `INVALID_PLAN` (exit 65) with a redacted
+`DIAGNOSTIC` record instead of a traceback.
+
+### Roles and automatic incoming
+
+`writer` names the agent allowed to run `in` and `push`. Commands carrying
+`--agent NAME` with a different name return `NOT_WRITER` (exit 77) before any lock
+or plan lookup; `status`, `check` and `plan` are open to every agent. Without
+`--agent` (a human at a shell) no role check applies.
+
+`auto_in: true` lets `in --plan PLAN_FILE` run without `--approve`. The engine
+derives the approval from the plan bytes and, after the usual re-fetch, re-scan and
+plan comparison, applies it only when every changed source file is shared text
+(`shared/instructions.md`, `shared/skills/*/SKILL.md`, `adapters/*.md`). Any other
+change returns `PENDING_APPROVAL` (exit 77) and prints the `PLAN_ID` to approve
+explicitly. `push` has no automatic mode. Every other safety gate (scanner, drift,
+locks, journals, staged changes, history scope) is unchanged.
+
+### check
+
+`check` fetches the branch into quarantine and prints `HEAD`, `REMOTE_HEAD` and
+`REMOTE: UP_TO_DATE | BEHIND n | AHEAD n | DIVERGED`. It scans nothing, writes no
+plan and takes no source lock; network failures return `NETWORK_ERROR` (exit 71).
+With `plan_dir`, a successful check records `plan_dir/last-check.json`; a later
+`check` on the same local calendar day prints `CHECKED_TODAY` with the previous
+result instead of fetching, unless `--force` is given. This is the intended
+start-of-work freshness probe; a full incoming plan is only needed on `BEHIND`.
+
 ## Commands and approval
 
-For an **authorized, already migrated source/destination**, use absolute paths:
+For an **authorized, already migrated source/destination**, use absolute paths or
+`--config`:
 
 ```sh
 engine="$sync_destination/.config/ai-agent/bin/sync.sh"
@@ -76,11 +126,12 @@ Supply `--author-name`, `--author-email` and optionally `--message` to **both**
 commands when a commit is needed. Identity is explicit: no global Git identity is
 read. The default message is `chore: sync shared agent configuration`.
 
-A plan is a new owner-only JSON file outside source and destination. Nested source
-under HOME is supported under the [Phase 2.7 layout boundary](production-layout.md);
-this does not permit plans, backups, or local bare remotes inside destination HOME.
-Its parent
-must already exist. Existing plan files are not overwritten. It records:
+A plan is a new owner-only JSON file outside the source checkout and outside the
+deployment regions (`.claude`, `.codex`, `.agents`, `.config/ai-agent`) of the
+destination. Nested source under HOME is supported under the
+[Phase 2.7 layout boundary](production-layout.md); backups and local bare remotes
+still may not live inside destination HOME. The plan's parent directory
+must already exist (or come from a configured `plan_dir`). Existing plan files are not overwritten. It records:
 
 - Canonical roots, exact remote URL, branch and base/remote commit IDs.
 - Full index and repository-config hashes; source/target bytes and permission hashes.
