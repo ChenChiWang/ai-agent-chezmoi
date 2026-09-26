@@ -214,9 +214,11 @@ an aborted transaction, which is normal Git object-store behavior.
 
 Explicit transport accepts absolute local repository paths (including spaces),
 `https://host/path` without embedded credentials, and `ssh://user@host/path` without
-passwords. SCP aliases, other protocols and query/fragment credentials are rejected.
-SSH uses the existing SSH agent and strict existing known_hosts; it disables user
-SSH config, interactive prompts, identity-file discovery and host-key writes. HTTPS
+passwords. The scp form `user@host:path` is normalized to `ssh://user@host/path` (since 2026-09-26); other protocols and query/fragment credentials are rejected.
+SSH uses the existing SSH agent or the user's default identity files (since
+2026-09-26; a passphrase-protected file without an agent fails closed) and strict
+existing known_hosts; it disables user
+SSH config, interactive prompts and host-key writes. HTTPS
 has no credential-helper integration, so authenticated HTTPS is not yet supported.
 Use an explicit SSH URL with an already authorized agent for private remotes. The
 selected remote is a trusted service; local bare fixture hooks are used only for

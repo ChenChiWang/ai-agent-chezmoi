@@ -673,6 +673,14 @@ sys.exit(10 if secret else 0)
         config = self.write_config(auto_in=True)
         self.raw(['push', '--config', config, '--plan', plan_file], expected=64)
 
+    def test_scp_style_remote_is_normalized(self):
+        module, engine = self.engine_instance()
+        self.assertEqual(engine.remote_url('git@github.com:user/repo.git'), 'ssh://git@github.com/user/repo.git')
+        self.assertEqual(engine.remote_url('ssh://git@github.com/user/repo.git'), 'ssh://git@github.com/user/repo.git')
+        for bad in ('git@github.com:/abs/path', 'user@host:a:b', 'http://github.com/user/repo.git', 'github.com:user/repo'):
+            with self.assertRaises(module.Block):
+                engine.remote_url(bad)
+
     def test_writer_role(self):
         config = self.write_config(writer='claude')
         self.assertIn('NOT_WRITER', self.raw(['in', '--config', config, '--agent', 'codex', '--approve', '0' * 64], expected=77))

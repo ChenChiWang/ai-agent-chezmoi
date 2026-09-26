@@ -302,11 +302,13 @@ class Engine:
             # SSH agent authentication is permitted only for explicit network operations.
             if os.environ.get('SSH_AUTH_SOCK'):
                 env['SSH_AUTH_SOCK'] = os.environ['SSH_AUTH_SOCK']
-            # No user SSH config, ProxyCommand, identity-file discovery, or host-key writes.
+            # No user SSH config, ProxyCommand, prompts or host-key writes. The agent and
+            # the user's default identity files (~/.ssh/id_*) are both accepted; a
+            # passphrase-protected file without an agent fails closed under BatchMode.
             known = Path(os.path.expanduser('~/.ssh/known_hosts'))
             import shlex
             env['GIT_SSH_COMMAND'] = ('ssh -F /dev/null -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes '
-                                      '-o IdentityFile=none -o UpdateHostKeys=no '
+                                      '-o UpdateHostKeys=no '
                                       '-o UserKnownHostsFile=' + shlex.quote(str(known)))
         return self.call(['git', '--no-lazy-fetch', '--git-dir=' + str(self.iso), *args], data, env,
                          71 if network else 70, 'NETWORK_ERROR' if network else 'GIT_ERROR')
@@ -323,6 +325,10 @@ class Engine:
                  'INVALID_REMOTE')
             return str(p)
         need(' ' not in value, 'INVALID_REMOTE')
+        # Git 的 scp 型式 user@host:path 視為 ssh://user@host/path；plan 記錄正規化後的 URL。
+        scp = re.fullmatch(r'([A-Za-z0-9._-]+)@([A-Za-z0-9.-]+):([^/:][^:]*)', value)
+        if scp and '://' not in value:
+            value = 'ssh://%s@%s/%s' % scp.groups()
         u = urlsplit(value)
         need(u.scheme in ('https', 'ssh') and u.hostname and u.path.startswith('/')
              and not u.password and not u.query and not u.fragment, 'INVALID_REMOTE')
