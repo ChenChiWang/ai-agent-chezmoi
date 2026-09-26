@@ -4,7 +4,7 @@
 
 把 Claude Code 與 Codex 的**可攜設定**（全域指示、skills、settings）放進一份 chezmoi source，
 同步到你的每一台機器，並讓 agent 自己在**開工與收工時安全地同步**：
-開工先拉最新、收工經你核准後才發布。目前只在 macOS 驗證過，平台支援見[需求](#需求)。
+開工先拉最新、收工經你核准後才發布。目前在 macOS 驗證過，Windows 透過 WSL 驗證過一次（僅 Claude Code），平台支援見[需求](#需求)。
 
 ## 讓 agent 幫你上線（推薦）
 
@@ -52,7 +52,7 @@ sessions／history／cache／plugins，以及任何 `*.key`、`*.pem`、`*.token
 
 | 項目 | 要求 |
 |---|---|
-| 作業系統 | **macOS 已測**。Linux：程式碼為 POSIX，應可運作但尚未驗收。Windows：只能透過 WSL，且 Claude Code 與 Codex 都要在 WSL 內執行（Windows 端的 `~/.claude` 不會被管理），尚未驗證；原生 Windows 與 Git Bash 不支援（引擎寫死 `/tmp`、POSIX 權限與執行位元、`os.getuid`）。 |
+| 作業系統 | **macOS 已測**。Linux：程式碼為 POSIX，應可運作但尚未驗收。Windows：只能透過 WSL，且 Claude Code 與 Codex 都要在 WSL 內執行（Windows 端的 `~/.claude` 不會被管理）；已在 WSL2 Ubuntu 24.04 以 `claude` profile 完成一次上線驗證，Codex 尚未驗證，見 [`docs/wsl.md`](./docs/wsl.md)；原生 Windows 與 Git Bash 不支援（引擎寫死 `/tmp`、POSIX 權限與執行位元、`os.getuid`）。 |
 | Git | 2.45 以上（需支援 `--no-lazy-fetch`） |
 | chezmoi | 2.71 系列已測 |
 | Python | 3.9 以上，只用標準函式庫 |
@@ -139,6 +139,7 @@ sh ~/.config/ai-agent/bin/sync.sh push --config ~/.config/ai-agent/sync.local.js
 |---|---|
 | [`setup/AGENT-SETUP.md`](./setup/AGENT-SETUP.md) | 給 agent 的上線手冊，每步標明「agent 做」或「問使用者」 |
 | [`docs/new-machine.md`](./docs/new-machine.md) | 給人的上線與驗收指南、結果碼對照表、跨機器端到端測試 |
+| [`docs/wsl.md`](./docs/wsl.md) | Windows 透過 WSL 上線：WSL 特有步驟、已知限制、驗證紀錄 |
 | [`docs/sync-v2.md`](./docs/sync-v2.md) | 引擎契約：profile、參數檔、角色、plan、lock、復原 |
 | [`docs/secret-scanner.md`](./docs/secret-scanner.md) | scanner 契約與測試 |
 | [`docs/production-layout.md`](./docs/production-layout.md) | source 位於 HOME 之下時的安全邊界 |

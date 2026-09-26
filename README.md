@@ -5,8 +5,8 @@
 Keep the **portable parts** of your Claude Code and Codex configuration (global
 instructions, skills, settings) in one chezmoi source, sync it to every machine you
 use, and let the agents themselves **sync safely at the start and end of work**: pull
-before starting, publish only after you approve. Verified on macOS only so far; see
-[Requirements](#requirements) for platform support.
+before starting, publish only after you approve. Verified on macOS, and once on
+Windows through WSL (Claude Code only); see [Requirements](#requirements) for platform support.
 
 ## Let an agent bring a machine up (recommended)
 
@@ -67,7 +67,7 @@ force push.
 
 | Item | Requirement |
 |---|---|
-| Operating system | **macOS tested**. Linux: the code is POSIX and should work, but has no acceptance run yet. Windows: only through WSL, with Claude Code and Codex also running inside WSL (the Windows-side `~/.claude` is not managed); unverified. Native Windows and Git Bash are not supported (the engine hardcodes `/tmp`, POSIX permissions and executable bits, and `os.getuid`). |
+| Operating system | **macOS tested**. Linux: the code is POSIX and should work, but has no acceptance run yet. Windows: only through WSL, with Claude Code and Codex also running inside WSL (the Windows-side `~/.claude` is not managed); one bring-up verified on WSL2 Ubuntu 24.04 with the `claude` profile, Codex unverified. See [`docs/wsl.md`](./docs/wsl.md) (Traditional Chinese). Native Windows and Git Bash are not supported (the engine hardcodes `/tmp`, POSIX permissions and executable bits, and `os.getuid`). |
 | Git | 2.45 or newer (`--no-lazy-fetch` support) |
 | chezmoi | 2.71 series tested |
 | Python | 3.9 or newer, standard library only |
@@ -165,6 +165,7 @@ it over an existing agent configuration.
 |---|---|
 | [`setup/AGENT-SETUP.md`](./setup/AGENT-SETUP.md) | bring-up manual for an agent; each step marked "you do" or "ask the user" |
 | [`docs/new-machine.md`](./docs/new-machine.md) | bring-up and acceptance guide for humans, result-code table, cross-machine end-to-end test (zh-TW) |
+| [`docs/wsl.md`](./docs/wsl.md) | Windows through WSL: WSL-specific steps, known limits, verification record (zh-TW) |
 | [`docs/sync-v2.md`](./docs/sync-v2.md) | engine contract: profiles, parameter file, roles, plans, locks, recovery |
 | [`docs/secret-scanner.md`](./docs/secret-scanner.md) | scanner contract and tests |
 | [`docs/production-layout.md`](./docs/production-layout.md) | safety boundaries when the source lives under HOME |
