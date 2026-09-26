@@ -3,9 +3,10 @@
 # Claude Code + Codex configuration sync (chezmoi)
 
 Keep the **portable parts** of your Claude Code and Codex configuration (global
-instructions, skills, settings) in one chezmoi source, sync it to every machine on
-macOS / Linux / Windows, and let the agents themselves **sync safely at the start and
-end of work**: pull before starting, publish only after you approve.
+instructions, skills, settings) in one chezmoi source, sync it to every machine you
+use, and let the agents themselves **sync safely at the start and end of work**: pull
+before starting, publish only after you approve. Verified on macOS only so far; see
+[Requirements](#requirements) for platform support.
 
 ## Let an agent bring a machine up (recommended)
 
@@ -64,8 +65,9 @@ force push.
 
 ## Requirements
 
-| Tool | Requirement |
+| Item | Requirement |
 |---|---|
+| Operating system | **macOS tested**. Linux: the code is POSIX and should work, but has no acceptance run yet. Windows: only through WSL, with Claude Code and Codex also running inside WSL (the Windows-side `~/.claude` is not managed); unverified. Native Windows and Git Bash are not supported (the engine hardcodes `/tmp`, POSIX permissions and executable bits, and `os.getuid`). |
 | Git | 2.45 or newer (`--no-lazy-fetch` support) |
 | chezmoi | 2.71 series tested |
 | Python | 3.9 or newer, standard library only |
@@ -189,7 +191,8 @@ your private repository.
 [`chezmoi-claude-setup.md`](./chezmoi-claude-setup.md) (Traditional Chinese) and
 [`examples/dotfiles-sync/`](./examples/dotfiles-sync/) are the first version, which
 synced `~/.claude` only: `in` / `status` / `push` wrap `chezmoi update`, `re-add` and
-git push directly. They stay for existing users, but v1 `status` modifies the source
+git push directly, and were designed with Windows Git Bash in mind. They stay for
+existing users, but v1 `status` modifies the source
 and index, prints the diff before scanning, and its `push` does not enforce a scan.
 New users should start with v2.
 

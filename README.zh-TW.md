@@ -3,8 +3,8 @@
 # Claude Code + Codex 設定同步（chezmoi）
 
 把 Claude Code 與 Codex 的**可攜設定**（全域指示、skills、settings）放進一份 chezmoi source，
-同步到 macOS / Linux / Windows 的每一台機器，並讓 agent 自己在**開工與收工時安全地同步**：
-開工先拉最新、收工經你核准後才發布。
+同步到你的每一台機器，並讓 agent 自己在**開工與收工時安全地同步**：
+開工先拉最新、收工經你核准後才發布。目前只在 macOS 驗證過，平台支援見[需求](#需求)。
 
 ## 讓 agent 幫你上線（推薦）
 
@@ -50,8 +50,9 @@ sessions／history／cache／plugins，以及任何 `*.key`、`*.pem`、`*.token
 
 ## 需求
 
-| 工具 | 要求 |
+| 項目 | 要求 |
 |---|---|
+| 作業系統 | **macOS 已測**。Linux：程式碼為 POSIX，應可運作但尚未驗收。Windows：只能透過 WSL，且 Claude Code 與 Codex 都要在 WSL 內執行（Windows 端的 `~/.claude` 不會被管理），尚未驗證；原生 Windows 與 Git Bash 不支援（引擎寫死 `/tmp`、POSIX 權限與執行位元、`os.getuid`）。 |
 | Git | 2.45 以上（需支援 `--no-lazy-fetch`） |
 | chezmoi | 2.71 系列已測 |
 | Python | 3.9 以上，只用標準函式庫 |
@@ -161,8 +162,8 @@ Commit／push 只在臨時本機 fixture 執行，測試不會碰你的私有 re
 ## Legacy v1
 
 [`chezmoi-claude-setup.md`](./chezmoi-claude-setup.md) 與 [`examples/dotfiles-sync/`](./examples/dotfiles-sync/)
-是只同步 `~/.claude` 的第一版：`in`／`status`／`push` 直接包 `chezmoi update`、`re-add` 與 git push。
-保留給既有使用者，但它的 `status` 會改 source 與 index、先輸出 diff 才掃描、`push` 不強制掃描。
+是只同步 `~/.claude` 的第一版：`in`／`status`／`push` 直接包 `chezmoi update`、`re-add` 與 git push，
+當初以 Windows Git Bash 為前提設計。保留給既有使用者，但它的 `status` 會改 source 與 index、先輸出 diff 才掃描、`push` 不強制掃描。
 新使用者請直接用 v2。
 
 ## 安全提醒
