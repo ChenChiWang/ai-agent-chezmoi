@@ -36,6 +36,8 @@ shared text sources (instructions, the six skills, the two adapters). Any change
 scripts, wrappers, settings or metadata returns `PENDING_APPROVAL` (exit 77) and needs
 an explicit `--approve PLAN_ID` after review. `push` never has an automatic mode.
 
+## Scope and safety
+
 This is an agent-driven workflow
 using Shared Core instructions and this common skill, not a CLI launch callback.
 Do not create launchers, guardians, background services or lifecycle hooks for it.
@@ -54,12 +56,16 @@ this skill does not detect all native/IDE sessions or fix the historical loading
 ## Three memory checkpoints
 
 **Start:** On the first turn of a new work session, before substantive work, invoke
-this skill without waiting for a reminder. Read the parameter file; ask only for
+this skill without waiting for a reminder. Short read-only tasks are not exempt, but
+the daily `CHECKED_TODAY` result keeps the cost to one offline `status`. Read the parameter file; ask only for
 missing essentials rather than guessing roots or silently treating the project as
 the source. Run local
 `status`. It is offline and only describes scoped local state: `NO_CHANGES` does not
 mean the remote is current. Then run `check`: it fetches into quarantine and reports
 `UP_TO_DATE`, `BEHIND n`, `AHEAD n` or `DIVERGED` without scanning or writing a plan.
+The remote is probed once per local day per machine: `CHECKED_TODAY` repeats the
+earlier result and needs no further action at start; use `--force` only when the
+user asks for a fresh probe or at the finish checkpoint.
 If network or inspection permission is missing, request exactly that and report
 remote freshness as unknown. On `UP_TO_DATE`, begin work without any write or empty
 commit. On `BEHIND`, create an incoming plan, review its actual content and
@@ -167,7 +173,7 @@ During an unpublished migration, a reviewed `migration plan` creates a private
 baseline/rollback package; `migration apply` requires its `MIGRATION_ID`. A rules
 map must preserve every original instruction segment except explicitly reviewed
 legacy sync triggers. Existing portable skills and Claude settings are preserved.
-Use the public migration-readiness procedure to prepare this map; do not infer
+Use the archived migration-readiness procedure (docs/history) to prepare this map; do not infer
 that installing the skill authorizes conversion.
 
 With the legacy HEAD still in place, local regression may use `plan --operation in
