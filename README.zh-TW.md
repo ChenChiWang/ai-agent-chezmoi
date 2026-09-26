@@ -121,14 +121,13 @@ sh ~/.config/ai-agent/bin/sync.sh push --config ~/.config/ai-agent/sync.local.js
 
 ## 第一台機器（還沒有私有 repo）
 
-`setup/AGENT-SETUP.md` 假設私有 repo 已存在。第一次建立時：
+同一句話也適用：agent 會走 `setup/AGENT-SETUP.md` 的 **4B** 路徑，以
+[`examples/chezmoi/`](./examples/chezmoi/) 為範本在 `~/.local/share/chezmoi` 建立你的私有 source，
+把既有的 `~/.claude/CLAUDE.md`、`settings.json` 內容併進 source（每一步先給你看、經你確認），
+`chezmoi apply` 後掃描、做第一個 commit，並在你核准後推到你提供的**空的私有 repo**。之後每台機器都走一般流程。
 
-1. 以 [`examples/chezmoi/`](./examples/chezmoi/) 為範本建立你自己的**私有** dotfiles repo。它是完整的
-   chezmoi source（`.chezmoiignore`、`dot_claude/`、`dot_codex/`、`dot_agents/`、`dot_config/`、
-   `.chezmoitemplates/ai/`），把 `shared/instructions.md` 與 `dot_claude/settings.json` 換成你的內容。
-2. 若你已有一套舊版 `~/.claude` 設定要帶進來，引擎的 `migration` 子命令可做離線轉換並保留 rollback，
-   流程見 [migration readiness](./docs/history/migration-readiness.md)。
-3. 之後每台機器都走上面的 agent 上線流程。
+兩個已知限制：v2 的 skill 集合固定為範本裡的六個名稱，只能改內容、不能增減，其他 skill 維持不納管；
+既有的 legacy v1 使用者若要保留轉換與 rollback，另見 [migration readiness](./docs/history/migration-readiness.md)。
 
 **不可**對本公開 repo 執行 `chezmoi init --apply`，也不可整包覆蓋現有 agent 設定。
 

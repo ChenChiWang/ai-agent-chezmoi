@@ -2,6 +2,7 @@
 
 > 對象：要在第二台電腦啟用 v2 同步的人，以及被指派協助上線的 agent。
 > 假設私有 dotfiles repo 已完成 Phase 3 遷移，且第一台機器已在使用 v2。
+> 還沒有私有 repo：`setup/AGENT-SETUP.md` 的 4B 路徑會從 `examples/chezmoi/` 建立它。
 
 > 想讓 agent 代勞：告訴它「clone 公開 repo，照 `setup/AGENT-SETUP.md` 上線」。那份手冊把每一步
 > 分成「agent 做」與「問使用者」，只有把公鑰貼到 GitHub、決定覆寫既有設定、決定 `writer` 與

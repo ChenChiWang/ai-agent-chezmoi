@@ -140,16 +140,17 @@ Interactive Claude Code asks before each `sync.sh` run unless `permissions.allow
 
 ## First machine (no private repository yet)
 
-`setup/AGENT-SETUP.md` assumes the private repository exists. To create it:
+The same sentence works: the agent takes path **4B** of `setup/AGENT-SETUP.md`. It
+creates your private source at `~/.local/share/chezmoi` from
+[`examples/chezmoi/`](./examples/chezmoi/), merges your existing `~/.claude/CLAUDE.md`
+and `settings.json` into it (every step shown and confirmed first), applies, scans,
+makes the baseline commit and, after your approval, pushes to the **empty private
+repository** you provide. Every later machine uses the normal path.
 
-1. Start your own **private** dotfiles repository from [`examples/chezmoi/`](./examples/chezmoi/).
-   It is a complete chezmoi source (`.chezmoiignore`, `dot_claude/`, `dot_codex/`,
-   `dot_agents/`, `dot_config/`, `.chezmoitemplates/ai/`); replace
-   `shared/instructions.md` and `dot_claude/settings.json` with your own content.
-2. If you have an existing legacy `~/.claude` setup to bring along, the engine's
-   `migration` subcommand converts it offline with a rollback; see
-   [migration readiness](./docs/history/migration-readiness.md).
-3. Every machine after that uses the agent bring-up above.
+Two known limits: the v2 skill set is fixed to the six names in the template, so
+their content can change but skills cannot be added or removed, and other skills stay
+unmanaged; legacy v1 users who want a conversion with rollback should read
+[migration readiness](./docs/history/migration-readiness.md).
 
 **Never** run `chezmoi init --apply` against this public repository, and never copy
 it over an existing agent configuration.
