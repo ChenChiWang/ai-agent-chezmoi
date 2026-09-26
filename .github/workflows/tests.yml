@@ -1,0 +1,70 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  posix:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned tools
+        run: |
+          sh .github/ci/install-tools.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Run tests
+        run: sh .github/ci/run-tests.sh
+
+  wsl:
+    name: windows-2025 (WSL2 Ubuntu 24.04)
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Vampire/setup-wsl@d1da7f2c0322a5ee4f24975344f67fc0f5baf364 # v7.0.0
+        with:
+          distribution: Ubuntu-24.04
+          wsl-version: 2
+          additional-packages: ca-certificates curl python3 software-properties-common
+      # Ubuntu 24.04 內建 Git 2.43，引擎需要 2.45 以上；測試以一般使用者執行，不用 root。
+      - name: Upgrade Git and create a non-root user
+        shell: wsl-bash {0}
+        run: |
+          set -eu
+          add-apt-repository -y ppa:git-core/ppa
+          apt-get update -q
+          apt-get install -y -q git
+          useradd -m -s /bin/bash ci
+      # 工作目錄在 Windows 磁碟（/mnt/d）上，chmod 無效；把 commit 的內容匯出到 ext4 再測。
+      - name: Export the checkout onto ext4
+        shell: wsl-bash {0}
+        run: |
+          set -eu
+          src=$(wslpath -u '${{ github.workspace }}')
+          install -d -o ci -g ci /home/ci/repo
+          git -c safe.directory='*' -C "$src" archive --format=tar HEAD | tar -x -C /home/ci/repo
+          chown -R ci:ci /home/ci/repo
+      - name: Install pinned tools and run tests
+        shell: wsl-bash {0}
+        run: |
+          su - ci -c 'cd ~/repo && sh .github/ci/install-tools.sh && PATH="$HOME/.local/bin:$PATH" sh .github/ci/run-tests.sh'

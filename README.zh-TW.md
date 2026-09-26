@@ -158,7 +158,8 @@ python3 tests/test-scanner.py                    # 需要真實 Gitleaks 8.30.1
 sh tests/session-acceptance.sh claude|codex      # 呼叫真實模型驗收開工檢查，有費用，手動執行
 ```
 
-Commit／push 只在臨時本機 fixture 執行，測試不會碰你的私有 repo。
+Commit／push 只在臨時本機 fixture 執行，測試不會碰你的私有 repo。CI（[`.github/workflows/tests.yml`](./.github/workflows/tests.yml)）
+在 Ubuntu 24.04、macOS 15 與 WSL2 Ubuntu 24.04 上執行 `session-acceptance.sh` 以外的全部測試。
 
 ## Legacy v1
 
