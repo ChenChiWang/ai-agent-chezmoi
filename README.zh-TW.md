@@ -8,18 +8,19 @@
 
 ## 讓 agent 幫你上線（推薦）
 
-前提：你已經有一個私有 dotfiles repo（v2 佈局）。在新機器上開 Claude Code 或 Codex，只要說一句：
+不管是第一台機器還是新加入的機器，開 Claude Code 或 Codex，只要說一句：
 
 > Clone `https://github.com/ChenChiWang/ai-agent-chezmoi`，然後照 `setup/AGENT-SETUP.md` 把這台機器上線。
 
-**agent 會自己做**：唯讀自檢（`setup/preflight.sh`）、提出缺少工具的安裝命令並在你確認後執行、
-釘版本安裝 Gitleaks 並核對官方 SHA-256、核對 GitHub 主機指紋、`chezmoi init` 與 diff 摘要、
-推導參數檔內容、部署後自檢（`doctor`）、第一次 `status` 與 `check`。
+**agent 會自己做**：先問你是接入既有私有 repo 還是第一次建立，然後唯讀自檢（`setup/preflight.sh`）、
+提出缺少工具的安裝命令並在你確認後執行、釘版本安裝 Gitleaks 並核對官方 SHA-256、核對 GitHub 主機指紋、
+建立或接入 chezmoi source 並摘要 diff、推導參數檔內容、部署後自檢（`doctor`）、第一次 `status` 與 `check`。
 
-**只有這幾件事需要你**：把 SSH 公鑰貼到 GitHub、決定是否覆寫既有設定、決定 `writer` 與
-`auto_in`（見下方參數檔）、核准每一次 push。agent 不會用 sudo、不會放寬 sandbox、不會替你核准。
+**只有這幾件事需要你**：把 SSH 公鑰貼到 GitHub、第一次建立時提供一個空的私有 repo、決定既有設定
+是否覆寫或怎麼併入、決定 `writer` 與 `auto_in`（見下方參數檔）、核准每一次 push（含第一次）。
+agent 不會用 sudo、不會放寬 sandbox、不會替你核准。
 
-還沒有私有 repo？見[第一台機器](#第一台機器還沒有私有-repo)。人工流程與結果對照表見
+第一次建立時會多做的事見[第一台機器](#第一台機器還沒有私有-repo)。人工流程與結果對照表見
 [`docs/new-machine.md`](./docs/new-machine.md)。
 
 ## 它做什麼
@@ -103,7 +104,7 @@ Codex 預設 sandbox 沒有網路也不能寫 HOME，所以 `check` 會回 `CHEC
 sh ~/.config/ai-agent/bin/sync.sh status --config ~/.config/ai-agent/sync.local.json
 # 遠端是否有新 commit（每天快取一次，--force 重探）
 sh ~/.config/ai-agent/bin/sync.sh check  --config ~/.config/ai-agent/sync.local.json --agent claude
-# 部署後唯讀自檢，14 項 OK/WARN/FAIL
+# 部署後唯讀自檢，逐項 OK/WARN/FAIL
 sh ~/.config/ai-agent/bin/sync.sh doctor --config ~/.config/ai-agent/sync.local.json
 # 拉最新：建 incoming plan（印出 PLAN_ID），審閱後套用
 sh ~/.config/ai-agent/bin/sync.sh plan --operation in --config ~/.config/ai-agent/sync.local.json --agent claude

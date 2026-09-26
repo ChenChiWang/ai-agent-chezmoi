@@ -9,23 +9,25 @@ end of work**: pull before starting, publish only after you approve.
 
 ## Let an agent bring a machine up (recommended)
 
-Prerequisite: you already have a private dotfiles repository in the v2 layout. On the
-new machine, open Claude Code or Codex and say one sentence:
+Whether it is your very first machine or one more, open Claude Code or Codex and say
+one sentence:
 
 > Clone `https://github.com/ChenChiWang/ai-agent-chezmoi`, then follow `setup/AGENT-SETUP.md` to bring this machine up.
 
-**The agent does**: the read-only preflight (`setup/preflight.sh`), proposes install
+**The agent does**: asks whether it joins an existing private repository or creates
+the first one, then the read-only preflight (`setup/preflight.sh`), proposes install
 commands for missing tools and runs them after your confirmation, installs the pinned
-Gitleaks and verifies the official SHA-256, verifies the GitHub host fingerprint, runs
-`chezmoi init` and summarizes the diff, derives the parameter file, runs the
-post-deployment `doctor`, and the first `status` and `check`.
+Gitleaks and verifies the official SHA-256, verifies the GitHub host fingerprint,
+creates or joins the chezmoi source and summarizes the diff, derives the parameter
+file, runs the post-deployment `doctor`, and the first `status` and `check`.
 
-**Only you**: paste the SSH public key into GitHub, decide whether existing settings
-may be overwritten, choose `writer` and `auto_in` (see the parameter file below), and
-approve every push. The agent never uses sudo, never widens its sandbox and never
-approves on your behalf.
+**Only you**: paste the SSH public key into GitHub, provide an empty private
+repository on the first machine, decide whether existing settings are overwritten or
+merged, choose `writer` and `auto_in` (see the parameter file below), and approve
+every push including the first one. The agent never uses sudo, never widens its
+sandbox and never approves on your behalf.
 
-No private repository yet? See [First machine](#first-machine-no-private-repository-yet).
+What the first machine adds: [First machine](#first-machine-no-private-repository-yet).
 The manual procedure and the result table are in [`docs/new-machine.md`](./docs/new-machine.md)
 (Traditional Chinese).
 
@@ -120,7 +122,7 @@ work. When you need the commands yourself:
 sh ~/.config/ai-agent/bin/sync.sh status --config ~/.config/ai-agent/sync.local.json
 # new commits on the remote? (cached once a day, --force re-probes)
 sh ~/.config/ai-agent/bin/sync.sh check  --config ~/.config/ai-agent/sync.local.json --agent claude
-# read-only post-deployment self-check, 14 OK/WARN/FAIL lines
+# read-only post-deployment self-check, one OK/WARN/FAIL line per check
 sh ~/.config/ai-agent/bin/sync.sh doctor --config ~/.config/ai-agent/sync.local.json
 # pull: build an incoming plan (prints PLAN_ID), review, apply
 sh ~/.config/ai-agent/bin/sync.sh plan --operation in --config ~/.config/ai-agent/sync.local.json --agent claude
