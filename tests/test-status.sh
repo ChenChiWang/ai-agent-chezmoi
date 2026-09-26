@@ -114,6 +114,16 @@ chmod -x "$dst/.config/ai-agent/bin/sync.sh"
 run_status 2
 assert_contains "$test_root/output" 'sync.sh mode'
 chmod +x "$dst/.config/ai-agent/bin/sync.sh"
+# 比標準 644/755 寬鬆（group 或 other 可寫入）的部署檔也要回報
+chmod g+w "$dst/.claude/CLAUDE.md"
+run_status 2
+assert_contains "$test_root/output" 'TARGET: .claude/CLAUDE.md mode'
+chmod g-w "$dst/.claude/CLAUDE.md"
+chmod o+w "$dst/.config/ai-agent/bin/sync.sh"
+run_status 2
+assert_contains "$test_root/output" 'sync.sh mode'
+chmod o-w "$dst/.config/ai-agent/bin/sync.sh"
+run_status 0
 mv "$dst/.agents/skills/dotfiles-sync/SKILL.md" "$test_root/saved-skill"
 run_status 2
 assert_contains "$test_root/output" 'SKILL.md missing'

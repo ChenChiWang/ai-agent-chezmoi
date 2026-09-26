@@ -189,7 +189,7 @@ class EngineTests(ScannerTests):
         shutil.copytree(REPO / "examples/chezmoi", src)
         dst.mkdir()
         config = self.root / "config.toml"
-        config.write_text("")
+        config.write_text("umask = 0o022\n")
         self.env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null", GIT_TERMINAL_PROMPT="0")
         def run(args):
             result = subprocess.run(args, env=self.env, cwd=self.root, capture_output=True)

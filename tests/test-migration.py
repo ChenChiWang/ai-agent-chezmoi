@@ -100,7 +100,7 @@ sys.exit(10 if secret else 0)
 
     def cm(self, *args):
         config = self.root / 'config.toml'
-        config.touch()
+        config.write_text('umask = 0o022\n')  # 與文件建議的本機設定一致，部署權限不受 shell umask 影響
         return self.run_command(['chezmoi', '--config', config, '--source', self.src, '--destination', self.dst,
                                  '--cache', self.root / 'cache', '--persistent-state', self.root / 'state.db',
                                  '--refresh-externals=never', '--no-tty', *args])

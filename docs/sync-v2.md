@@ -262,10 +262,14 @@ Before changing files, the engine rechecks the approved state and acquires Git's
 `index.lock`. It stores private old/new bytes, modes, hashes, paths and old/new ref
 IDs in `.git/ai-agent-sync-transaction/manifest.json` and numbered backup files.
 Files are replaced atomically one at a time. Generated outputs are canonically `644`,
-or `755` when executable, but a mode that differs only by the user's umask (for
-example `664` from a `chezmoi apply` under umask `002`) is not a change: a file whose
-bytes match is never rewritten, and a file whose bytes change keeps its existing mode
-(since 2026-09-27). The branch ref update compares the
+or `755` when executable (since 2026-09-27). An existing mode that is equal to or
+stricter than that (for example `600` or `700`) is kept. A looser mode, with group or
+other write (for example `664` from a `chezmoi apply` under umask `002`, or `777`), is a
+change: the plan lists it as `TARGET: <path> sha256=... mode=664->644`, execution
+tightens it, and `status` reports it as `TARGET: <path> mode`. `in` applies the same
+rule to the source files it writes. Set `umask = 0o022` in the machine's chezmoi config
+so chezmoi itself never deploys looser modes; `doctor` warns when it is missing. The
+branch ref update compares the
 expected old OID; see [Git update-ref](https://git-scm.com/docs/git-update-ref).
 The isolated index becomes the real index only within this guarded transaction.
 For local-only `in`, the original index bytes are preserved.
