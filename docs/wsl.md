@@ -77,6 +77,16 @@ WSL 的 `~/.ssh` 跟 Windows 的是分開的。建議在 WSL 產生一把新的 
 
 - **兩套 Claude 設定。** Windows 端的 `~/.claude` 不受 v2 管理。同一台機器上如果 Windows 和
   WSL 都在用 Claude Code，只有 WSL 那套會同步。
+- **Windows 端想沿用同一份規則時，只套用 `~/.claude`。** Windows 端沒有參數檔也沒有引擎，
+  共用指示會讓它安靜跳過同步檢查。但不帶路徑的 `chezmoi apply` 或 `chezmoi update` 會把引擎
+  部署到 `~/.config/ai-agent/bin`，這台就會變成「有引擎、沒參數檔」，被當成上線不完整而每次
+  回報。所以在 Windows 端（PowerShell）只更新 `~/.claude`：
+
+  ```powershell
+  git -C $HOME\.local\share\chezmoi pull --ff-only
+  chezmoi diff --recursive $HOME\.claude     # 帶目錄參數時要加 --recursive 才有輸出
+  chezmoi apply --recursive $HOME\.claude
+  ```
 - **statusLine 需要 Node。** 如果 synced 的 `settings.json` 用 `npx` 啟動 statusLine，
   WSL 內也要有 Node；Claude Code 本身（native 版）不需要 Node。
 - **從 Windows 端的 agent 驅動 WSL。** PowerShell 傳給 `wsl -- bash -c '...'` 的引號會被
