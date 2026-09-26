@@ -33,6 +33,9 @@ The completed migration procedure (Phase 2.6/3) is archived under
 
 ### Setup notes (read before enabling the agent-driven checkpoints)
 
+Bringing up a second machine, end-to-end acceptance and the result/label table are in
+[`docs/new-machine.md`](./docs/new-machine.md) (Traditional Chinese).
+
 Each machine needs one parameter file, `~/.config/ai-agent/sync.local.json`, that
 you write yourself (agents are told never to create it). It is never synchronized.
 
