@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Real local Git histories/remotes; all mutations inside disposable fixtures."""
+import contextlib
+import errno
+import io
 import hashlib
 import importlib.util
 from types import SimpleNamespace
@@ -421,6 +424,101 @@ sys.exit(10 if secret else 0)
         self.assertEqual(caught.exception.code, 72)
         self.assertEqual((self.dst / '.claude/CLAUDE.md').read_text(), 'concurrent user edit')
         self.assertTrue((self.src / '.git/ai-agent-sync-transaction/manifest.json').is_file())
+
+    def diagnostic_failure(self, fault):
+        self.incoming()
+        module, engine = self.engine_instance()
+        engine.build()
+        before = self.state()
+        head = self.git(self.src, 'rev-parse', 'HEAD')
+        original_atomic, original_remove = module.atomic, module.shutil.rmtree
+        original_mkdir = Path.mkdir
+        secret = 'FAKE_PRIVATE_PAYLOAD_do_not_print'
+        journal = self.src / '.git/ai-agent-sync-transaction'
+        source_lock = self.src / '.git/ai-agent-sync.lock'
+        written = []
+
+        def atomic_failure(path, value):
+            if path == self.dst / '.codex/AGENTS.md':
+                raise OSError(errno.EIO, secret, '/private/' + secret)
+            if (fault == 'rollback' and path == self.dst / '.claude/CLAUDE.md'
+                    and path in written):
+                raise PermissionError(errno.EACCES, secret)
+            result = original_atomic(path, value)
+            written.append(path)
+            return result
+
+        def mkdir_failure(path, *args, **kwargs):
+            if fault == 'before' and path == source_lock:
+                raise PermissionError(errno.EPERM, secret, '/private/' + secret)
+            return original_mkdir(path, *args, **kwargs)
+
+        def cleanup_failure(path, *args, **kwargs):
+            if fault == 'cleanup' and path == journal:
+                raise PermissionError(errno.EACCES, secret)
+            return original_remove(path, *args, **kwargs)
+
+        def execute_locked():
+            module.diagnostics.transaction_started = False
+            module.diagnostics.rollback = dict(attempted=False, result='not_attempted')
+            with module.lock(self.src):
+                engine.execute()
+            return 0
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(module, 'main', side_effect=execute_locked), \
+                patch.object(module, 'atomic', side_effect=atomic_failure), \
+                patch.object(Path, 'mkdir', new=mkdir_failure), \
+                patch.object(module.shutil, 'rmtree', side_effect=cleanup_failure), \
+                contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = module.cli()
+        self.assertEqual(code, 72 if fault == 'rollback' else 70)
+        output = stdout.getvalue() + stderr.getvalue()
+        self.assertNotIn(secret, output)
+        self.assertNotIn(str(self.root), output)
+        self.assertTrue(stderr.getvalue().startswith('DIAGNOSTIC: '))
+        diagnostic = json.loads(stderr.getvalue().removeprefix('DIAGNOSTIC: '))
+        self.assertEqual(diagnostic['operation'], 'source_lock' if fault == 'before' else 'apply_files')
+        self.assertEqual(diagnostic['phase'], 'coordination' if fault == 'before' else 'transaction')
+        self.assertEqual(diagnostic['errno'], errno.EPERM if fault == 'before' else errno.EIO)
+        self.assertEqual(diagnostic['exception_type'], 'PermissionError' if fault == 'before' else 'OSError')
+        self.assertEqual(diagnostic['location']['file'], 'sync-write.py')
+        self.assertIsInstance(diagnostic['location']['line'], int)
+        self.assertEqual(diagnostic['transaction_started'], fault != 'before')
+        self.assertEqual(diagnostic['rollback'], dict(attempted=fault != 'before',
+                         result='not_attempted' if fault == 'before' else
+                         'failed' if fault == 'rollback' else 'succeeded'))
+        self.assertEqual(self.git(self.src, 'rev-parse', 'HEAD'), head)
+        self.assertFalse(source_lock.exists())
+        self.assertFalse((self.src / '.git/index.lock').exists())
+        self.assertEqual(journal.exists(), fault in ('rollback', 'cleanup'))
+        after = self.state()
+        for key, value in before.items():
+            if fault == 'rollback' and key == 'destination/.claude/CLAUDE.md':
+                self.assertNotEqual(after[key], value)
+            else:
+                self.assertEqual(after[key], value, key)
+        if fault == 'before':
+            self.assertEqual(before, after)
+        else:
+            self.assertIn(self.dst / '.claude/CLAUDE.md', written)
+        if fault in ('rollback', 'cleanup'):
+            self.assertTrue(any(e.get('errno') == errno.EACCES for e in diagnostic['secondary_errors']))
+        if fault == 'cleanup':
+            self.assertEqual(diagnostic['cleanup']['operations']['remove_journal']['result'], 'failed')
+        return diagnostic
+
+    def test_diagnostic_before_write(self):
+        self.diagnostic_failure('before')
+
+    def test_diagnostic_after_write_rollback_succeeds(self):
+        self.diagnostic_failure('after')
+
+    def test_diagnostic_rollback_failure_preserves_first(self):
+        self.diagnostic_failure('rollback')
+
+    def test_diagnostic_cleanup_failure_preserves_first(self):
+        self.diagnostic_failure('cleanup')
 
     def test_new_shared_skill_removed_secret_in_outbound_history(self):
         rel = '.chezmoitemplates/ai/shared/skills/review/SKILL.md'

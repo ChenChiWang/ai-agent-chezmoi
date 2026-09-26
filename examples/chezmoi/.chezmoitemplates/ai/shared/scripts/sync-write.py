@@ -2,6 +2,7 @@
 """Approved fixed-profile sync transactions. No third-party Python dependencies."""
 import argparse
 import contextlib
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -34,6 +35,96 @@ class Block(Exception):
         self.code, self.label = code, label
 
 
+class Diagnostics:
+    # 僅保存固定欄位；不保存例外文字、檔案路徑、locals 或子程序輸出。
+    OPERATIONS = {
+        'validate_plan': 'preflight', 'initialize_engine': 'prepare',
+        'build_candidate': 'prepare', 'source_lock': 'coordination',
+        'validate_execution': 'preflight', 'write_plan': 'prepare',
+        'prepare_bundle': 'prepare', 'activate': 'transaction',
+        'transfer_objects': 'transfer', 'create_journal': 'transaction',
+        'index_lock': 'transaction', 'backup_files': 'transaction',
+        'write_manifest': 'transaction', 'apply_files': 'transaction',
+        'update_ref': 'transaction', 'restore_files': 'rollback',
+        'verify_ref': 'rollback', 'remove_journal': 'cleanup',
+        'remove_index_lock': 'cleanup', 'release_lock': 'cleanup',
+        'temporary_workspace': 'cleanup', 'atomic_temporary': 'cleanup',
+        'object_temporary': 'cleanup', 'close_directory': 'cleanup',
+        'unknown': 'unknown',
+    }
+
+    def __init__(self):
+        self.operation = 'unknown'
+        self.first = None
+        self.secondary = []
+        self.first_error_id = None
+        self.transaction_started = 'unknown'
+        self.rollback = dict(attempted='unknown', result='unknown')
+        self.cleanup = {}
+
+    def mark(self, operation):
+        self.operation = operation if operation in self.OPERATIONS else 'unknown'
+
+    def capture(self, error):
+        if id(error) == self.first_error_id:
+            return
+        allowed = (Block, OSError, PermissionError, FileNotFoundError, FileExistsError,
+                   IsADirectoryError, NotADirectoryError, TimeoutError, ValueError,
+                   UnicodeDecodeError, KeyError, TypeError, RecursionError,
+                   subprocess.SubprocessError, subprocess.CalledProcessError,
+                   subprocess.TimeoutExpired, KeyboardInterrupt)
+        kind = type(error).__name__ if type(error) in allowed else 'unknown'
+        location = dict(file='unknown', line=None)
+        trace = error.__traceback__
+        while trace:
+            # 比對完整程式來源，輸出則僅有固定 basename 與行號。
+            if trace.tb_frame.f_code.co_filename in (__file__, api.__file__):
+                location = dict(file='sync-write.py' if trace.tb_frame.f_code.co_filename == __file__
+                                else 'scan-secrets.py', line=trace.tb_lineno)
+            trace = trace.tb_next
+        record = dict(phase=self.OPERATIONS[self.operation], operation=self.operation,
+                      exception_type=kind, location=location)
+        if isinstance(error, OSError) and type(error.errno) is int and 0 < error.errno < 4096:
+            record['errno'] = error.errno
+        if self.first is None:
+            self.first_error_id = id(error)
+            self.first = record
+        elif record != self.first and record not in self.secondary and len(self.secondary) < 8:
+            self.secondary.append(record)
+
+    @contextlib.contextmanager
+    def cleaning(self, operation):
+        previous = self.operation
+        self.mark(operation)
+        operation = self.operation
+        entry = self.cleanup.setdefault(operation, dict(attempted=True, result='unknown'))
+        try:
+            yield
+        except BaseException as error:
+            entry['result'] = 'failed'
+            self.capture(error)
+            raise
+        else:
+            if entry['result'] != 'failed':
+                entry['result'] = 'succeeded'
+        finally:
+            self.operation = previous
+
+    def emit(self, error):
+        if self.first is None:
+            self.capture(error)
+        record = dict(schema=1, **self.first, transaction_started=self.transaction_started,
+                      rollback=self.rollback,
+                      cleanup=dict(attempted=True if self.cleanup else 'unknown',
+                                   result=('failed' if any(v['result'] == 'failed' for v in self.cleanup.values())
+                                           else 'succeeded' if self.cleanup else 'unknown'),
+                                   operations=self.cleanup), secondary_errors=self.secondary)
+        print('DIAGNOSTIC: ' + json.dumps(record, sort_keys=True), file=sys.stderr)
+
+
+diagnostics = Diagnostics()
+
+
 def need(ok, label='INVALID_SOURCE', code=65):
     if not ok:
         raise Block(code, label)
@@ -55,7 +146,8 @@ def safe(path):
 def layout(args, legacy=False):
     try:
         return api.validate_layout(args.source, args.destination,
-                                   getattr(args, 'profile', 'claude-codex'), legacy)
+                                   getattr(args, 'profile', 'claude-codex'), legacy,
+                                   getattr(args, 'repository_profile', None))
     except (ValueError, OSError):
         raise Block(65, 'INVALID_LAYOUT') from None
 
@@ -89,6 +181,19 @@ def normalized(snap):
     return {p: (v[0], 0o755 if v[1] & 0o111 else 0o644) for p, v in snap.items()}
 
 
+def fsync_dir(path):
+    safe(path)
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    except BaseException as error:
+        diagnostics.capture(error)
+        raise
+    finally:
+        with diagnostics.cleaning('close_directory'):
+            os.close(fd)
+
+
 def atomic(path, value):
     safe(path)
     fd, name = tempfile.mkstemp(prefix='.ai-sync-', dir=str(path.parent))
@@ -99,28 +204,38 @@ def atomic(path, value):
             os.fchmod(f.fileno(), value[1])
             os.fsync(f.fileno())
         os.replace(name, path)
+        fsync_dir(path.parent)
+    except BaseException as error:
+        diagnostics.capture(error)
+        raise
     finally:
-        if os.path.exists(name):
-            os.unlink(name)
+        with diagnostics.cleaning('atomic_temporary'):
+            if os.path.exists(name):
+                os.unlink(name)
 
 
 class Engine:
     def __init__(self, args, tmp):
+        diagnostics.mark('initialize_engine')
         self.a, self.tmp = args, tmp
         self.profile = getattr(args, 'profile', 'claude-codex')
         self.files, self.targets = api.mapping(self.profile)
+        self.repository_profile = getattr(args, 'repository_profile', None) or self.profile
+        need(set(self.files) <= set(api.mapping(self.repository_profile)[0]), 'INVALID_REPOSITORY_PROFILE')
+        self.files = api.mapping(self.repository_profile)[0]
         self.offline = getattr(args, 'offline', False)
         self.src, self.dst = layout(args)
         self.gd = self.src / '.git'
         safe(self.gd)
         need(self.gd.is_dir(), 'UNSUPPORTED_WORKTREE')
-        homes = [('CLAUDE_CONFIG_DIR', '.claude'),
-                            ('AI_AGENT_HOME', '.config/ai-agent')]
-        if self.profile == 'claude-codex':
+        homes = [('AI_AGENT_HOME', '.config/ai-agent')]
+        if self.profile != 'codex':
+            homes.append(('CLAUDE_CONFIG_DIR', '.claude'))
+        if self.profile != 'claude':
             homes.append(('CODEX_HOME', '.codex'))
         for key, suffix in homes:
             need(not os.environ.get(key) or os.environ[key] == str(self.dst / suffix), 'UNSUPPORTED_HOME')
-        if self.profile == 'claude-codex':
+        if self.profile != 'claude':
             safe(self.dst / '.codex/AGENTS.override.md')
             need(not (self.dst / '.codex/AGENTS.override.md').exists(), 'BLOCKED_OVERRIDE')
         # Refuse indirection/special repositories before invoking Git against them.
@@ -153,14 +268,22 @@ class Engine:
             need(not (self.gd / name).exists(), 'BLOCKED_CONFLICT', 66)
         self.remote = '' if self.offline else self.remote_url(args.remote)
 
+    def remaining(self, timeout):
+        deadline = getattr(self.a, 'prepare_deadline', None)
+        if deadline is not None:
+            left = deadline - time.monotonic()
+            need(left > 0, 'PREPARATION_TIMEOUT', 71)
+            return min(timeout, left)
+        return timeout
+
     def call(self, cmd, data=None, env=None, code=70, label='GIT_ERROR'):
         try:
             p = subprocess.run(cmd, input=data, env=env or self.env, cwd=self.tmp,
-                               capture_output=True, timeout=120)
+                               capture_output=True, timeout=self.remaining(getattr(self.a, 'network_timeout', 120) if code == 71 else 120))
+        except subprocess.TimeoutExpired:
+            raise Block(71, 'PREPARATION_TIMEOUT') from None
         except FileNotFoundError:
             raise Block(69, 'MISSING_DEPENDENCY') from None
-        except subprocess.TimeoutExpired:
-            raise Block(code, label) from None
         need(p.returncode == 0, label, code)
         return p.stdout
 
@@ -174,7 +297,7 @@ class Engine:
             # No user SSH config, ProxyCommand, identity-file discovery, or host-key writes.
             known = Path(os.path.expanduser('~/.ssh/known_hosts'))
             import shlex
-            env['GIT_SSH_COMMAND'] = ('ssh -F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=yes '
+            env['GIT_SSH_COMMAND'] = ('ssh -F /dev/null -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes '
                                       '-o IdentityFile=none -o UpdateHostKeys=no '
                                       '-o UserKnownHostsFile=' + shlex.quote(str(known)))
         return self.call(['git', '--no-lazy-fetch', '--git-dir=' + str(self.iso), *args], data, env,
@@ -239,7 +362,7 @@ class Engine:
             report = root / 'report.json'
             try:
                 run = subprocess.run([str(self.scanner), str(root / 'snapshot'), str(report)],
-                                     cwd=self.tmp, env=self.env, capture_output=True, timeout=120)
+                                     cwd=self.tmp, env=self.env, capture_output=True, timeout=self.remaining(getattr(self.a, 'scan_timeout', 120)))
                 findings = api.validate_report(api.read_json(report), run.returncode)
             except (api.ScanError, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
                 raise Block(70, 'SCANNER_ERROR') from None
@@ -263,7 +386,7 @@ class Engine:
         snap = {p: (api.decode_shared(v[0]), v[1]) if p.startswith('.chezmoitemplates/') else v
                 for p, v in snap.items()}
         result = {}
-        products = ('claude',) if self.profile == 'claude' else ('claude', 'codex')
+        products = ('claude', 'codex') if self.profile == 'claude-codex' else (self.profile,)
         for product in products:
             target = '.' + product + ('/CLAUDE.md' if product == 'claude' else '/AGENTS.md')
             result[target] = (api.BANNER + snap[PREFIX + 'shared/instructions.md'][0] + b'\n'
@@ -275,8 +398,9 @@ class Engine:
         for name in SCRIPTS:
             result['.config/ai-agent/bin/' + name] = (snap[PREFIX + 'shared/scripts/' + name][0],
                                                    0o644 if name.endswith('.json') else 0o755)
-        result['.claude/settings.json'] = (snap['dot_claude/settings.json'][0], 0o644)
-        result['.claude/skills/dotfiles-sync/sync.sh'] = (snap[PREFIX + 'shared/scripts/legacy-sync.sh'][0], 0o755)
+        if 'claude' in products:
+            result['.claude/settings.json'] = (snap['dot_claude/settings.json'][0], 0o644)
+            result['.claude/skills/dotfiles-sync/sync.sh'] = (snap[PREFIX + 'shared/scripts/legacy-sync.sh'][0], 0o755)
         return result
 
     def migration_baseline(self):
@@ -332,12 +456,18 @@ class Engine:
         return commits
 
     def state(self):
-        return dict(head=self.source_git('rev-parse', 'HEAD').decode().strip(),
+        result = dict(head=self.source_git('rev-parse', 'HEAD').decode().strip(),
                     ref=self.source_git('symbolic-ref', 'HEAD').decode().strip(),
                     index=summary({'index': read(self.gd / 'index')}),
                     config=summary({'config': read(self.gd / 'config')}),
                     source=summary(snapshot(self.src, self.files)),
                     target=summary(snapshot(self.dst, self.targets)))
+        enrolled = cohort_receipt(self.src, self.dst, allow_pending=True)
+        if enrolled:
+            receipt_path, _ = enrolled
+            result['cohort'] = dict(marker=digest(read(self.gd / 'ai-agent-cohort.json')[0]),
+                                    receipt=summary({'receipt': read(receipt_path)}) if receipt_path.exists() else None)
+        return result
 
     def clean_index(self):
         # Clean entire index, including unrelated staged files and special flags.
@@ -354,6 +484,7 @@ class Engine:
         need(all(not p or p.startswith(b'H ') for p in flags), 'BLOCKED_INDEX_FLAGS', 66)
 
     def build(self):
+        diagnostics.mark('build_candidate')
         self.before = self.state()
         need(self.before['head'] == self.head and self.before['ref'] == self.ref, 'BLOCKED_STALE_PLAN', 68)
         self.clean_index()
@@ -392,7 +523,7 @@ class Engine:
         need(self.state() == self.before, 'BLOCKED_STALE_PLAN', 68)
         tools = {p: digest(read(HERE / p)[0]) for p in SCRIPTS}
         tools['scanner'] = digest(read(self.scanner)[0])
-        return dict(schema=3, profile=self.profile, offline=self.offline,
+        return dict(schema=3, profile=self.profile, repository_profile=self.repository_profile, offline=self.offline,
                     baseline_id=getattr(self.a, 'baseline_id', None), operation=self.a.operation, source=str(self.src), destination=str(self.dst),
                     remote=self.remote, branch=self.a.branch, scanner=str(self.scanner),
                     message=self.a.message, identity=[self.a.author_name, self.a.author_email],
@@ -401,6 +532,7 @@ class Engine:
                     tree=self.candidate_tree, tools=tools)
 
     def transfer_objects(self):
+        diagnostics.mark('transfer_objects')
         for parent, dirs, files in os.walk(self.iso / 'objects'):
             rel = Path(parent).relative_to(self.iso / 'objects')
             if rel.parts and rel.parts[0] == 'info':
@@ -419,18 +551,31 @@ class Engine:
                             f.flush()
                             os.fsync(f.fileno())
                         os.replace(temporary, dest)
+                    except BaseException as error:
+                        diagnostics.capture(error)
+                        raise
                     finally:
-                        if os.path.exists(temporary):
-                            os.unlink(temporary)
+                        with diagnostics.cleaning('object_temporary'):
+                            if os.path.exists(temporary):
+                                os.unlink(temporary)
 
     def transact(self, new_head, changes, new_index):
+        diagnostics.mark('create_journal')
         need(self.state() == self.before, 'BLOCKED_STALE_PLAN', 68)
+        enrolled = cohort_receipt(self.src, self.dst)
+        if enrolled:
+            receipt_path, receipt = enrolled
+            need(receipt['profile'] == self.profile, 'PROFILE_SWITCH_REQUIRES_BOOTSTRAP')
+            updated = dict(receipt, head=new_head, targets=summary(self.rendered))
+            changes = list(changes) + [(receipt_path, (encoded(updated), 0o600))]
         journal = self.gd / 'ai-agent-sync-transaction'
         journal.mkdir(mode=0o700)
+        diagnostics.transaction_started = True
         backups, committed, ref_attempted = [], False, False
         index_lock = self.gd / 'index.lock'
         acquired = False
         try:
+            diagnostics.mark('index_lock')
             # Git's own index lock prevents cooperating ordinary Git writers too.
             with index_lock.open('xb') as f:
                 acquired = True
@@ -441,6 +586,7 @@ class Engine:
             changes = [(p, v) for p, v in changes if read(p) != v]
             changes.append((self.gd / 'index', (new_index, read(self.gd / 'index')[1])))
             manifest = []
+            diagnostics.mark('backup_files')
             for n, (path, value) in enumerate(changes):
                 old = read(path)
                 atomic(journal / ('old-%d' % n), (old[0], 0o600))
@@ -449,11 +595,14 @@ class Engine:
                 manifest.append(dict(path=str(path), old_mode=old[1], new_mode=value[1],
                                      old_hash=digest(old[0]), new_hash=digest(value[0])))
             record = dict(ref=self.ref, old_head=self.head, new_head=new_head, files=manifest)
+            diagnostics.mark('write_manifest')
             atomic(journal / 'manifest.json', (encoded(record), 0o600))
+            diagnostics.mark('apply_files')
             for n, (path, value) in enumerate(changes):
                 need(read(path) == ((journal / ('old-%d' % n)).read_bytes(), manifest[n]['old_mode']),
                      'BLOCKED_STALE_PLAN', 68)
                 atomic(path, value)
+            diagnostics.mark('update_ref')
             need(self.source_git('symbolic-ref', 'HEAD').decode().strip() == self.ref, 'BLOCKED_STALE_PLAN', 68)
             if new_head != self.head:
                 ref_attempted = True
@@ -462,17 +611,23 @@ class Engine:
                 need(self.source_git('rev-parse', self.ref).decode().strip() == self.head,
                      'BLOCKED_STALE_PLAN', 68)
             committed = True
-        except BaseException:
+        except BaseException as error:
+            diagnostics.capture(error)
+            diagnostics.rollback = dict(attempted=True, result='unknown')
             # A killed/timed-out update-ref may already have committed. Preserve
             # the journal instead of rolling files back underneath an advanced ref.
             if ref_attempted:
                 try:
+                    diagnostics.mark('verify_ref')
                     current = self.source_git('rev-parse', self.ref).decode().strip()
                     need(current == self.head, 'RECOVERY_REQUIRED', 72)
-                except BaseException:
+                except BaseException as recovery_error:
+                    diagnostics.capture(recovery_error)
+                    diagnostics.rollback['result'] = 'failed'
                     raise Block(72, 'RECOVERY_REQUIRED') from None
             # Never overwrite a third-party edit while rolling back.
             recovered = True
+            diagnostics.mark('restore_files')
             for path, new, old in reversed(backups):
                 try:
                     current = read(path)
@@ -480,20 +635,57 @@ class Engine:
                         continue
                     need(current == new)
                     atomic(path, old)
-                except BaseException:
+                except BaseException as recovery_error:
+                    diagnostics.capture(recovery_error)
                     recovered = False
+            diagnostics.rollback['result'] = 'succeeded' if recovered else 'failed'
             if recovered:
-                shutil.rmtree(journal)
+                with diagnostics.cleaning('remove_journal'):
+                    shutil.rmtree(journal)
             else:
                 raise Block(72, 'RECOVERY_REQUIRED') from None
             raise
         finally:
             if acquired:
-                index_lock.unlink()
+                with diagnostics.cleaning('remove_index_lock'):
+                    index_lock.unlink()
         if committed:
-            shutil.rmtree(journal)
+            with diagnostics.cleaning('remove_journal'):
+                shutil.rmtree(journal)
+
+    def prepare_bundle(self, root, plan_id):
+        """Persist only validated immutable candidates, external to source/HOME."""
+        safe(root)
+        need(root.is_absolute() and not any(api.overlaps(root, p) for p in (self.src, self.dst)),
+             'EXTERNAL_PREPARED_STATE_REQUIRED')
+        root.mkdir(mode=0o700, exist_ok=True)
+        info = root.stat()
+        need(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700, 'INVALID_PREPARED_STATE')
+        values = dict(self.candidate)
+        values.update({'target/' + p: v for p, v in self.rendered.items()})
+        doc = dict(schema=1, plan_id=plan_id, profile=self.profile, base=self.before,
+                   candidate_head=self.remote_head, files=summary(values))
+        blobs = {digest(value[0]): value[0] for value in values.values()}
+        need({p.name for p in root.iterdir()} <= set(blobs) | {'manifest.json'}, 'INVALID_PREPARED_STATE')
+        for name, data in blobs.items():
+            path = root / name
+            if path.exists():
+                need(read(path) == (data, 0o600) and path.stat().st_nlink == 1, 'PREPARED_DRIFT')
+            else:
+                atomic(path, (data, 0o600))
+        manifest = root / 'manifest.json'
+        if manifest.exists():
+            need(read(manifest) == (encoded(doc), 0o600), 'PREPARED_DRIFT')
+        else:
+            atomic(manifest, (encoded(doc), 0o600))
+        return digest(encoded(doc))
 
     def execute(self):
+        diagnostics.transaction_started = False
+        diagnostics.rollback = dict(attempted=False, result='not_attempted')
+        diagnostics.mark('activate')
+        cohort_receipt(self.src, self.dst)  # Incomplete enrollment cannot activate, even on a no-op.
+        need(not active_readers(self.src), 'DEFERRED_READERS', 75)
         if self.a.operation == 'in':
             changes = [(self.dst / p, v) for p, v in self.rendered.items()]
             if self.remote_head != self.head:
@@ -558,6 +750,7 @@ def arguments():
         p.add_argument('--' + arg, required=True)
     p.add_argument('--remote')
     p.add_argument('--profile', choices=api.PROFILES, default='claude-codex')
+    p.add_argument('--repository-profile', choices=api.PROFILES)
     p.add_argument('--offline', action='store_true')
     p.add_argument('--baseline')
     p.add_argument('--baseline-id')
@@ -582,22 +775,174 @@ def arguments():
     return a
 
 
+def active_readers(source):
+    readers = source / '.git/ai-agent-launch-readers'
+    safe(readers)
+    return readers.exists() and any(readers.iterdir())
+
+
+def cohort_metadata(source):
+    """Validate the physical barrier, without declaring deployment ready."""
+    marker = source / '.git/ai-agent-cohort.json'
+    safe(marker)
+    if not marker.exists():
+        return None
+    data, mode = read(marker)
+    doc = json.loads(data)
+    need(mode == 0o600 and doc.get('schema') == 1, 'INVALID_COHORT_METADATA')
+    destination, state = Path(doc['destination']), Path(doc['state'])
+    safe(state)
+    need(destination.is_absolute() and state.is_absolute()
+         and not any(api.overlaps(state.resolve(), p) for p in (source, destination)),
+         'INVALID_COHORT_METADATA')
+    info = state.stat()
+    need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+         and stat.S_IMODE(info.st_mode) == 0o700, 'INVALID_COHORT_METADATA')
+    need(read(source / '.git/ai-agent-sync.lock/owner.json') ==
+         (encoded(dict(protocol='cohort-v1')), 0o600), 'INVALID_COHORT_BARRIER')
+    mutex = source / '.git/ai-agent-cohort.lock'
+    safe(mutex)
+    info = mutex.stat()
+    need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid == os.getuid()
+         and stat.S_IMODE(info.st_mode) == 0o600, 'INVALID_COHORT_MUTEX')
+    return doc
+
+
+def cohort_receipt(source, destination, allow_pending=False):
+    doc = cohort_metadata(source)
+    if doc is None:
+        return None
+    need(doc['destination'] == str(destination), 'INVALID_COHORT_METADATA')
+    state = Path(doc['state'])
+    journal = state / 'journal.json'
+    safe(journal)
+    need(allow_pending or not journal.exists(), 'RECOVERY_REQUIRED', 72)
+    path = state / 'receipt.json'
+    safe(path)
+    if not path.exists():
+        need(allow_pending, 'ENROLLMENT_INCOMPLETE', 72)
+        return path, None
+    value, mode = read(path)
+    receipt = json.loads(value)
+    need(mode == 0o600 and path.stat().st_nlink == 1 and receipt.get('source') == str(source)
+         and receipt.get('destination') == str(destination), 'INVALID_COHORT_RECEIPT')
+    return path, receipt
+
+
+def cohort_mutex(source, create=False):
+    mutex = source / '.git/ai-agent-cohort.lock'
+    safe(mutex)
+    flags = os.O_RDWR | os.O_NOFOLLOW
+    if create and not mutex.exists():
+        flags |= os.O_CREAT | os.O_EXCL
+    fd = os.open(mutex, flags, 0o600)
+    try:
+        info = os.fstat(fd)
+        need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid == os.getuid()
+             and stat.S_IMODE(info.st_mode) == 0o600, 'INVALID_COHORT_MUTEX')
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Block(73, 'BLOCKED_LOCK') from None
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def sync_cohort(source):
+    """Persist the validated barrier again on recovery/rerun, under its lock."""
+    need(cohort_metadata(source) is not None, 'ENROLLMENT_INCOMPLETE', 72)
+    for relative in ('ai-agent-cohort.lock', 'ai-agent-sync.lock/owner.json', 'ai-agent-cohort.json'):
+        fd = os.open(source / '.git' / relative, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    fsync_dir(source / '.git/ai-agent-sync.lock')
+    fsync_dir(source / '.git')
+
+
 @contextlib.contextmanager
-def lock(source):
+def enroll_cohort(source, destination, state):
+    """Hold BOTH protocols through initial handoff and receipt publication.
+
+    Bootstrap's durable journal exists before entry. No stable mutex inode is
+    replaced. Existing enrollment is revalidated, never silently reconstructed.
+    """
+    marker = source / '.git/ai-agent-cohort.json'
+    value = dict(schema=1, destination=str(destination), state=str(state))
+    if marker.exists():
+        need(cohort_metadata(source) == value, 'COHORT_ENROLLMENT_MISMATCH')
+        sync_cohort(source)
+        yield
+        return
+    legacy = source / '.git/ai-agent-sync.lock'
+    need(legacy.is_dir(), 'ENROLLMENT_LOCK_REQUIRED')
+    fd = cohort_mutex(source, create=True)
+    try:
+        os.fsync(fd)
+        fsync_dir(source / '.git')
+        atomic(legacy / 'owner.json', (encoded(dict(protocol='cohort-v1')), 0o600))
+        atomic(marker, (encoded(value), 0o600))
+        need(cohort_metadata(source) == value, 'COHORT_ENROLLMENT_MISMATCH')
+        sync_cohort(source)
+        yield
+    finally:
+        os.close(fd)
+
+
+@contextlib.contextmanager
+def lock(source, allow_readers=False, allow_pending=False):
+    diagnostics.mark('source_lock')
     path = source / '.git/ai-agent-sync.lock'
     safe(path)
+    marker = source / '.git/ai-agent-cohort.json'
+    safe(marker)
+    # A handoff interrupted before marker publication retains the old barrier.
+    # Only approved bootstrap recovery may use its already-published kernel lock.
+    owner = read(path / 'owner.json', missing=True) if path.exists() else None
+    handing_off = owner == (encoded(dict(protocol='cohort-v1')), 0o600)
+    if marker.exists() or handing_off:
+        doc = cohort_metadata(source) if marker.exists() else None
+        need(doc is not None or allow_pending, 'ENROLLMENT_INCOMPLETE', 72)
+        fd = cohort_mutex(source)
+        try:
+            if not allow_pending:
+                cohort_receipt(source, Path(doc['destination']))
+            need(allow_readers or not active_readers(source), 'BLOCKED_ACTIVE_LAUNCH', 73)
+            yield
+        except BaseException as error:
+            diagnostics.capture(error)
+            raise
+        finally:
+            with diagnostics.cleaning('release_lock'):
+                os.close(fd)
+        return
     try:
         path.mkdir(mode=0o700)
     except FileExistsError:
         raise Block(73, 'BLOCKED_LOCK') from None
     try:
-        (path / 'owner.json').write_bytes(encoded(dict(pid=os.getpid(), started=int(time.time()))))
+        need(allow_readers or not active_readers(source), 'BLOCKED_ACTIVE_LAUNCH', 73)
+        atomic(path / 'owner.json', (encoded(dict(pid=os.getpid(), started=int(time.time()))), 0o600))
         yield
+    except BaseException as error:
+        diagnostics.capture(error)
+        raise
     finally:
-        shutil.rmtree(path)
+        with diagnostics.cleaning('release_lock'):
+            owner = read(path / 'owner.json', missing=True)
+            if not marker.exists() and owner != (encoded(dict(protocol='cohort-v1')), 0o600):
+                shutil.rmtree(path)
 
 
 def main():
+    global diagnostics
+    diagnostics = Diagnostics()
+    diagnostics.transaction_started = False
+    diagnostics.rollback = dict(attempted=False, result='not_attempted')
+    diagnostics.mark('validate_plan')
     os.umask(0o077)
     args = arguments()
     layout(args)  # Reject unsafe paths before even creating a source lock.
@@ -615,11 +960,15 @@ def main():
         document = json.loads(approved)
         need(type(document.get('created')) is int and 0 <= time.time() - document['created'] < 3600,
              'BLOCKED_EXPIRED_PLAN', 68)
-    with tempfile.TemporaryDirectory(prefix='ai-agent-write-', dir='/tmp') as temporary:
-        with lock(Path(args.source).resolve()):
-            engine = Engine(args, Path(temporary))
-            result = engine.build()
+    temporary = tempfile.TemporaryDirectory(prefix='ai-agent-write-', dir='/tmp')
+    try:
+        engine = Engine(args, Path(temporary.name))
+        result = engine.build()
+        with lock(Path(args.source).resolve(), allow_readers=True):
+            diagnostics.mark('validate_execution')
+            need(engine.state() == engine.before, 'BLOCKED_STALE_PLAN', 68)
             if args.command == 'plan':
+                diagnostics.mark('write_plan')
                 document = dict(created=int(time.time()), plan=result)
                 blob = encoded(document)
                 with plan_path.open('xb') as output:
@@ -644,8 +993,36 @@ def main():
                 need(document['plan'] == result, 'BLOCKED_STALE_PLAN', 68)
                 need(read(plan_path)[0] == approved, 'BLOCKED_STALE_PLAN', 68)
                 need(0 <= time.time() - document['created'] < 3600, 'BLOCKED_EXPIRED_PLAN', 68)
+                if active_readers(engine.src):
+                    diagnostics.mark('prepare_bundle')
+                    bundle = engine.prepare_bundle(plan_path.parent / ('prepared-' + args.approve), args.approve)
+                    print('DEFERRED_READERS; applied=false; PREPARED_ID: ' + bundle)
+                    return 75
                 engine.execute()
+    except BaseException as error:
+        diagnostics.capture(error)
+        raise
+    finally:
+        with diagnostics.cleaning('temporary_workspace'):
+            temporary.cleanup()
     return 0
+
+
+def cli():
+    try:
+        return main()
+    except Block as error:
+        print(error.label)
+        diagnostics.emit(error)
+        return error.code
+    except KeyboardInterrupt as error:
+        print('INTERRUPTED: inspect transaction journal before retry')
+        diagnostics.emit(error)
+        return 130
+    except (OSError, ValueError, KeyError, TypeError, RecursionError, subprocess.SubprocessError) as error:
+        print('IO_ERROR: operation stopped; no raw tool output exposed')
+        diagnostics.emit(error)
+        return 70
 
 
 if __name__ == '__main__':
@@ -653,14 +1030,4 @@ if __name__ == '__main__':
         raise KeyboardInterrupt()
     for sig in (signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, interrupted)
-    try:
-        sys.exit(main())
-    except Block as error:
-        print(error.label)
-        sys.exit(error.code)
-    except KeyboardInterrupt:
-        print('INTERRUPTED: inspect transaction journal before retry')
-        sys.exit(130)
-    except (OSError, ValueError, KeyError, TypeError, RecursionError, subprocess.SubprocessError):
-        print('IO_ERROR: operation stopped; no raw tool output exposed')
-        sys.exit(70)
+    sys.exit(cli())

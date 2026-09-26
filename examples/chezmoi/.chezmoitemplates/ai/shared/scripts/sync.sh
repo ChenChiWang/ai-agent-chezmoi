@@ -16,13 +16,14 @@ case "${1:-}" in
     exec python3 "$engine_dir/sync-write.py" "$@" ;;
   *) fail 64 'USAGE: sync.sh status --source ABS_PATH --destination ABS_PATH [--scanner ABS_EXECUTABLE]' ;;
 esac
-src= dst= scanner= profile=claude-codex
+src= dst= scanner= profile=claude-codex repository_profile=
 while [ "$#" -gt 0 ]; do
   [ "$#" -ge 2 ] || fail 64 'USAGE: missing option value'
   case "$1" in
     --source) [ -z "$src" ] || fail 64 'USAGE: duplicate source'; src=$2 ;;
     --destination) [ -z "$dst" ] || fail 64 'USAGE: duplicate destination'; dst=$2 ;;
     --profile) profile=$2 ;;
+    --repository-profile) repository_profile=$2 ;;
     --scanner) [ -z "$scanner" ] || fail 64 'USAGE: duplicate scanner'; scanner=$2 ;;
     *) fail 64 'USAGE: unknown option' ;;
   esac
@@ -53,12 +54,16 @@ safe_path() {
 [ -d "$src" ] && [ -d "$dst" ] || fail 65 'INVALID_SOURCE: source and destination must exist'
 src=$(cd "$src" && pwd -P)
 dst=$(cd "$dst" && pwd -P)
-case "$profile" in claude|claude-codex) ;; *) fail 64 'USAGE: invalid profile' ;; esac
-python3 "$formatter" --validate-layout "$src" "$dst" "$profile" 2>/dev/null || fail 65 'INVALID_LAYOUT: roots or managed paths'
+case "$profile" in claude|codex|claude-codex) ;; *) fail 64 'USAGE: invalid profile' ;; esac
+[ -n "$repository_profile" ] || repository_profile=$profile
+case "$profile:$repository_profile" in claude:claude|codex:codex|*:claude-codex) ;; *) fail 64 'USAGE: invalid repository profile' ;; esac
+python3 "$formatter" --validate-layout "$src" "$dst" "$profile" "$repository_profile" 2>/dev/null || fail 65 'INVALID_LAYOUT: roots or managed paths'
 [ -d "$src/.git" ] && [ ! -L "$src/.git" ] || fail 65 'INVALID_SOURCE: regular Git checkout required; worktrees unsupported'
-[ -z "${CLAUDE_CONFIG_DIR:-}" ] || [ "$CLAUDE_CONFIG_DIR" = "$dst/.claude" ] || fail 65 'UNSUPPORTED_HOME: custom CLAUDE_CONFIG_DIR'
+if [ "$profile" != codex ]; then
+  [ -z "${CLAUDE_CONFIG_DIR:-}" ] || [ "$CLAUDE_CONFIG_DIR" = "$dst/.claude" ] || fail 65 'UNSUPPORTED_HOME: custom CLAUDE_CONFIG_DIR'
+fi
 [ -z "${AI_AGENT_HOME:-}" ] || [ "$AI_AGENT_HOME" = "$dst/.config/ai-agent" ] || fail 65 'UNSUPPORTED_HOME: custom AI_AGENT_HOME'
-if [ "$profile" = claude-codex ]; then
+if [ "$profile" != claude ]; then
   [ -z "${CODEX_HOME:-}" ] || [ "$CODEX_HOME" = "$dst/.codex" ] || fail 65 'UNSUPPORTED_HOME: custom CODEX_HOME'
   safe_path "$dst/.codex/AGENTS.override.md" || fail 65 'INVALID_SOURCE: symlink in override path'
   [ ! -e "$dst/.codex/AGENTS.override.md" ] || fail 65 'BLOCKED_OVERRIDE: review AGENTS.override.md before deployment'
@@ -99,7 +104,7 @@ head=$(git_read rev-parse --verify HEAD 2>/dev/null) || {
 wrappers() {
   env -i PATH="$tool_path" HOME="$work/home" LC_ALL=C python3 "$formatter" --wrapper "$1" 2>/dev/null || fail 65 'UNSUPPORTED_TEMPLATE'
 }
-files=$(env -i PATH="$tool_path" HOME="$work/home" LC_ALL=C python3 "$formatter" --schema "$profile" source 2>/dev/null) || fail 65 'INVALID_PROFILE'
+files=$(env -i PATH="$tool_path" HOME="$work/home" LC_ALL=C python3 "$formatter" --schema "$repository_profile" source 2>/dev/null) || fail 65 'INVALID_PROFILE'
 changed=0
 for rel in $files; do
   safe_path "$src/$rel" || fail 65 "INVALID_SOURCE: symlink: $rel"
