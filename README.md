@@ -185,7 +185,8 @@ sh tests/session-acceptance.sh claude|codex      # fresh-session acceptance agai
 ```
 
 Commits and pushes happen only in temporary local fixtures; the tests never touch
-your private repository.
+your private repository. CI ([`.github/workflows/tests.yml`](./.github/workflows/tests.yml)) runs
+all of them except `session-acceptance.sh` on Ubuntu 24.04, macOS 15 and WSL2 Ubuntu 24.04.
 
 ## Legacy v1
 
