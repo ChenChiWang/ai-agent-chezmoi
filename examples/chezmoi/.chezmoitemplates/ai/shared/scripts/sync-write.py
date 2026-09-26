@@ -36,6 +36,9 @@ class Block(Exception):
         self.code, self.label = code, label
 
 
+# 封存的 Phase 4 cohort／lease 協定標記。任何一個存在都拒絕操作，留待人工檢視。
+COORDINATION_MARKERS = ('ai-agent-cohort.json', 'ai-agent-cohort.lock', 'ai-agent-launch-readers')
+
 # 純文字的共用來源：instructions、六個 skill、兩個 adapter。auto_in 只可自動套用這些檔案的變更。
 SHARED_TEXT = frozenset(
     [PREFIX + 'shared/instructions.md']
@@ -1067,6 +1070,10 @@ def main():
     os.umask(0o077)
     args = arguments()
     layout(args)  # Reject unsafe paths before even creating a source lock.
+    # 封存的 bootstrap／cohort 協定留下的標記一律拒絕並原樣保留；不進入 lock 或任何寫入。
+    for name in COORDINATION_MARKERS:
+        marker = Path(args.source).resolve() / '.git' / name
+        need(not marker.exists() and not marker.is_symlink(), 'BLOCKED_UNSUPPORTED_COORDINATION', 73)
     if args.command == 'check':
         return check(args)
     plan_path = Path(args.plan)

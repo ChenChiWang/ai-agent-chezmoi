@@ -141,7 +141,13 @@ agent 而 agent 無金鑰（改為允許預設金鑰檔）。另一個 agent 陷
 已改為從 plan 取用（此修正尚未部署到 HOME）。私有 repo 留有一個 stash（9/25 驗證殘留）待處理。
 公開 repo 的 `docs/history/` 與 `archive/` 含本機路徑與私有 repo 名稱，公開 push 前應清理。
 
-尚未執行：真實 Claude／Codex session 的主動觸發驗收；公開 repo push。
+**公開 repo 收尾（2026-09-26）**：本地 10 個 commit 以 filter-branch 清除本機路徑與私有 repo 名稱
+（LICENSE 署名與公開 repo URL 保留）；遠端另有一個早期快照 commit `eb5ba06`（診斷引擎變體、
+checkpoint 草稿），以「以本地為準」的 merge 收入，其 `agent-driven-memory.md` 移入 history，其
+`test_existing_coordination_metadata_refused` 採納：引擎與 shell status 對封存的 cohort／lease 標記一律
+回 `BLOCKED_UNSUPPORTED_COORDINATION`（73）。引擎內剩餘的 cohort 程式碼已不可達，建議下一輪移除。
+
+尚未執行：真實 Claude／Codex session 的主動觸發驗收；引擎 cohort 程式碼移除。
 
 ## 6. 附錄：本次複查的程式碼問題
 

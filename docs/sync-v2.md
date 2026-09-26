@@ -80,6 +80,15 @@ without repeating them; a different explicit message is a different plan
 (`BLOCKED_STALE_PLAN`). The plan also binds the source index hash: an intervening
 `git status` on the source refreshes the index and invalidates the plan.
 
+### Archived coordination metadata
+
+Any `ai-agent-cohort.json`, `ai-agent-cohort.lock` or `ai-agent-launch-readers`
+entry under the source `.git` belongs to the archived Phase 4 bootstrap protocol.
+Every command, including `status` and `check`, refuses with
+`BLOCKED_UNSUPPORTED_COORDINATION` (exit 73) before taking any lock and leaves the
+entry untouched for manual inspection. The engine's remaining cohort/lease code is
+therefore unreachable and scheduled for removal.
+
 ### Roles and automatic incoming
 
 `writer` names the agent allowed to run `in` and `push`. Commands carrying

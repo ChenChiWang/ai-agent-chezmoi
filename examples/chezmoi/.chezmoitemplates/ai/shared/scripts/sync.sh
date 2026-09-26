@@ -73,6 +73,9 @@ case "$profile" in claude|codex|claude-codex) ;; *) fail 64 'USAGE: invalid prof
 case "$profile:$repository_profile" in claude:claude|codex:codex|*:claude-codex) ;; *) fail 64 'USAGE: invalid repository profile' ;; esac
 python3 "$formatter" --validate-layout "$src" "$dst" "$profile" "$repository_profile" 2>/dev/null || fail 65 'INVALID_LAYOUT: roots or managed paths'
 [ -d "$src/.git" ] && [ ! -L "$src/.git" ] || fail 65 'INVALID_SOURCE: regular Git checkout required; worktrees unsupported'
+for marker in ai-agent-cohort.json ai-agent-cohort.lock ai-agent-launch-readers; do
+  [ ! -e "$src/.git/$marker" ] && [ ! -L "$src/.git/$marker" ] || fail 73 'BLOCKED_UNSUPPORTED_COORDINATION: archived bootstrap metadata present; inspect manually'
+done
 if [ "$profile" != codex ]; then
   [ -z "${CLAUDE_CONFIG_DIR:-}" ] || [ "$CLAUDE_CONFIG_DIR" = "$dst/.claude" ] || fail 65 'UNSUPPORTED_HOME: custom CLAUDE_CONFIG_DIR'
 fi

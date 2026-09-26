@@ -520,6 +520,23 @@ sys.exit(10 if secret else 0)
     def test_diagnostic_cleanup_failure_preserves_first(self):
         self.diagnostic_failure('cleanup')
 
+    def test_existing_coordination_metadata_refused(self):
+        # 僅在本測試自行建立的臨時 fixture 檢查拒絕與原樣保留（含 status 與 check）。
+        for name in ('ai-agent-cohort.json', 'ai-agent-cohort.lock', 'ai-agent-launch-readers'):
+            with self.subTest(name=name):
+                path = self.src / '.git' / name
+                path.write_text('existing coordination evidence')
+                before = self.state()
+                output = self.plan(expected=73)
+                self.assertIn(b'BLOCKED_UNSUPPORTED_COORDINATION', output)
+                self.assertEqual(before, self.state())
+                self.assertFalse(self.planfile.exists())
+                self.assertFalse((self.src / '.git/ai-agent-sync.lock').exists())
+                self.raw(['status', '--source', self.src, '--destination', self.dst, '--scanner', self.scanner], expected=73)
+                self.raw(['check', '--source', self.src, '--destination', self.dst, '--remote', self.remote,
+                          '--branch', 'main', '--scanner', self.scanner], expected=73)
+                path.unlink()
+
     def test_new_shared_skill_removed_secret_in_outbound_history(self):
         rel = '.chezmoitemplates/ai/shared/skills/review/SKILL.md'
         original = (self.src / rel).read_bytes()
