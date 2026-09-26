@@ -157,10 +157,15 @@ class NestedWriteTests(write.WriteTests):
         self.plan(expected=65)
         self.status(65)
 
-    def test_plan_file_cannot_be_written_inside_home(self):
+    def test_plan_file_outside_deployment_regions(self):
+        # 2026-09-26 起：plan 不得位於部署區域或 source 內，HOME 下其他位置允許。
+        for blocked in (self.dst / '.claude/plan.json', self.dst / '.agents/plan.json', self.src / 'plan.json'):
+            self.planfile = blocked
+            self.plan(expected=65)
+            self.assertFalse(self.planfile.exists())
         self.planfile = self.dst / 'plan.json'
-        self.plan(expected=65)
-        self.assertFalse(self.planfile.exists())
+        self.plan()
+        self.assertTrue(self.planfile.exists())
 
     def test_status_invalid_profile_remains_usage_error(self):
         self.run_cmd(['sh', write.ENGINE, 'status', '--source', self.src,

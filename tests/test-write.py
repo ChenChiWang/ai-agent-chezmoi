@@ -533,6 +533,160 @@ sys.exit(10 if secret else 0)
         self.plan(expected=67)
         self.assertEqual(before, self.state())
 
+    # ---- 本地參數檔（B）、plan 路徑規則（D2）、例外標籤（D3） ----
+
+    def write_config(self, **extra):
+        values = dict(source=str(self.src), destination=str(self.dst), remote=str(self.remote),
+                      branch='main', plan_dir=str(self.root / 'plans'), scanner=str(self.scanner),
+                      author_name='Fixture', author_email='fixture@example.test')
+        values.update(extra)
+        config = self.root / 'sync.local.json'
+        config.write_text(json.dumps(values))
+        config.chmod(0o600)
+        return config
+
+    def raw(self, args, expected=0):
+        result = subprocess.run(['sh', str(ENGINE), *[str(a) for a in args]], env=self.env, cwd=self.root,
+                                capture_output=True, timeout=120)
+        output = result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')
+        self.assertEqual(result.returncode, expected, output)
+        self.assertNotIn('Traceback', output)
+        self.assertNotIn('SYNTHETIC_TEST_SECRET', output)
+        return output
+
+    def test_config_supplies_roots_plan_dir_and_locates_plan_by_id(self):
+        config = self.write_config()
+        self.incoming()
+        output = self.raw(['plan', '--operation', 'in', '--config', config])
+        plan_file = Path([l for l in output.splitlines() if l.startswith('PLAN_FILE: ')][0][len('PLAN_FILE: '):])
+        plan_id = [l for l in output.splitlines() if l.startswith('PLAN_ID: ')][0][len('PLAN_ID: '):]
+        self.assertEqual(plan_file.parent, self.root / 'plans')
+        self.assertEqual((self.root / 'plans').stat().st_mode & 0o777, 0o700)
+        self.assertEqual(hashlib.sha256(plan_file.read_bytes()).hexdigest(), plan_id)
+        self.raw(['in', '--config', config, '--approve', plan_id])
+        self.assertIn('Incoming shared edit.', (self.dst / '.claude/CLAUDE.md').read_text())
+        self.assertIn('PLAN_NOT_FOUND', self.raw(['in', '--config', config, '--approve', '0' * 64], expected=66))
+
+    def test_config_status_and_command_line_override(self):
+        config = self.write_config()
+        self.assertIn('NO_CHANGES', self.raw(['status', '--config', config]))
+        # 命令列優先於參數檔：改指到不存在的分支必須被引擎拒絕。
+        self.raw(['plan', '--operation', 'in', '--config', config, '--branch', 'other'], expected=66)
+        self.raw(['status', '--config', config, '--profile', 'claude', '--profile', 'claude'], expected=64)
+
+    def test_config_validation(self):
+        config = self.write_config(unexpected='value')
+        self.assertIn('INVALID_CONFIG', self.raw(['plan', '--operation', 'in', '--config', config], expected=78))
+        self.assertIn('INVALID_CONFIG', self.raw(['status', '--config', config], expected=78))
+        config = self.write_config()
+        config.chmod(0o666)
+        self.raw(['status', '--config', config], expected=78)
+        config = self.write_config(writer='someone')
+        self.raw(['status', '--config', config], expected=78)
+        config = self.write_config(plan_dir='relative/plans')
+        self.raw(['status', '--config', config], expected=78)
+        self.raw(['status', '--config', 'relative.json'], expected=64)
+
+    def test_plan_path_alias_and_deployment_regions(self):
+        # 透過 /tmp 這類目錄別名指定 plan 必須可用；部署區域與 source 內部仍被拒絕。
+        alias = Path('/tmp') / self.root.name / 'alias-plan.json'
+        self.assertTrue(alias.parent.is_dir())
+        self.planfile = alias
+        self.plan('in')
+        self.assertTrue(alias.exists())
+        for blocked in (self.dst / '.claude/plan.json', self.dst / '.config/ai-agent/plan.json', self.src / 'plan.json'):
+            self.planfile = blocked
+            self.assertIn('INVALID_PLAN_PATH', self.call('plan', 65, ['--operation', 'in']).decode())
+            self.assertFalse(blocked.exists())
+        self.planfile = self.dst / 'plan-in-home.json'
+        self.plan('in')
+        self.execute('in')
+
+    def test_malformed_plan_document_is_labelled(self):
+        self.plan()
+        self.planfile.write_bytes(b'[]')
+        self.token = hashlib.sha256(self.planfile.read_bytes()).hexdigest()
+        output = self.raw(['push', '--source', self.src, '--destination', self.dst, '--remote', self.remote,
+                           '--branch', 'main', '--plan', self.planfile, '--scanner', self.scanner,
+                           '--approve', self.token], expected=65)
+        self.assertIn('INVALID_PLAN', output)
+        self.assertIn('DIAGNOSTIC: ', output)
+
+    # ---- check（D1）、auto_in（C）、writer 角色（E） ----
+
+    def test_check_reports_remote_state_and_daily_cache(self):
+        config = self.write_config()
+        self.assertIn('REMOTE: UP_TO_DATE', self.raw(['check', '--config', config]))
+        self.assertIn('CHECKED_TODAY', self.raw(['check', '--config', config]))
+        self.assertTrue((self.root / 'plans/last-check.json').is_file())
+        self.incoming()
+        self.assertIn('REMOTE: BEHIND 1', self.raw(['check', '--config', config, '--force']))
+        output = self.raw(['plan', '--operation', 'in', '--config', config])
+        plan_id = [l for l in output.splitlines() if l.startswith('PLAN_ID: ')][0][len('PLAN_ID: '):]
+        self.raw(['in', '--config', config, '--approve', plan_id])
+        self.assertIn('REMOTE: UP_TO_DATE', self.raw(['check', '--config', config, '--force']))
+        self.edit()
+        self.git(self.src, 'add', REL)
+        self.git(self.src, 'commit', '-qm', 'local ahead')
+        self.assertIn('REMOTE: AHEAD 1', self.raw(['check', '--config', config, '--force']))
+        self.incoming('\nSecond incoming edit.\n')
+        self.assertIn('REMOTE: DIVERGED', self.raw(['check', '--config', config, '--force']))
+        self.assertEqual(self.git(self.src, 'status', '--porcelain'), '')
+
+    def test_check_explicit_options_and_network_failure(self):
+        base = ['check', '--source', self.src, '--destination', self.dst, '--remote', self.remote,
+                '--branch', 'main', '--scanner', self.scanner]
+        self.assertIn('REMOTE: UP_TO_DATE', self.raw(base))
+        self.raw(base + ['--plan', self.planfile], expected=64)
+        shutil.rmtree(self.remote)
+        self.remote.mkdir()
+        self.assertIn('NETWORK_ERROR', self.raw(base, expected=71))
+
+    def auto_plan(self, config):
+        output = self.raw(['plan', '--operation', 'in', '--config', config])
+        lines = output.splitlines()
+        return (Path([l for l in lines if l.startswith('PLAN_FILE: ')][0][len('PLAN_FILE: '):]),
+                [l for l in lines if l.startswith('PLAN_ID: ')][0][len('PLAN_ID: '):])
+
+    def test_auto_in_shared_text_only(self):
+        config = self.write_config(auto_in=True)
+        self.incoming()
+        plan_file, plan_id = self.auto_plan(config)
+        self.assertIn('AUTO_IN', self.raw(['in', '--config', config, '--plan', plan_file]))
+        self.assertIn('Incoming shared edit.', (self.dst / '.codex/AGENTS.md').read_text())
+        # 腳本變更不得自動套用：回報 PENDING_APPROVAL 與 PLAN_ID，狀態不變；明確核准後才套用。
+        self.incoming('\n# incoming script comment\n', path='.chezmoitemplates/ai/shared/scripts/sync.sh')
+        plan_file, plan_id = self.auto_plan(config)
+        before = self.state()
+        output = self.raw(['in', '--config', config, '--plan', plan_file], expected=77)
+        self.assertIn('PENDING_APPROVAL', output)
+        self.assertIn('PLAN_ID: ' + plan_id, output)
+        self.assertEqual(before, self.state())
+        self.assertFalse((self.src / '.git/ai-agent-sync.lock').exists())
+        self.raw(['in', '--config', config, '--approve', plan_id])
+        self.assertIn('incoming script comment', (self.dst / '.config/ai-agent/bin/sync.sh').read_text())
+        # 沒有 auto_in 時，缺 --approve 仍是用法錯誤；push 永遠沒有自動模式。
+        config = self.write_config()
+        self.incoming('\nThird incoming edit.\n')
+        plan_file, plan_id = self.auto_plan(config)
+        self.raw(['in', '--config', config, '--plan', plan_file], expected=64)
+        config = self.write_config(auto_in=True)
+        self.raw(['push', '--config', config, '--plan', plan_file], expected=64)
+
+    def test_writer_role(self):
+        config = self.write_config(writer='claude')
+        self.assertIn('NOT_WRITER', self.raw(['in', '--config', config, '--agent', 'codex', '--approve', '0' * 64], expected=77))
+        self.assertIn('NOT_WRITER', self.raw(['push', '--config', config, '--agent', 'codex', '--approve', '0' * 64], expected=77))
+        self.raw(['status', '--config', config, '--agent', 'codex'])
+        self.raw(['check', '--config', config, '--agent', 'codex'])
+        self.raw(['plan', '--operation', 'in', '--config', config, '--agent', 'codex'])
+        self.incoming()
+        plan_file, plan_id = self.auto_plan(config)
+        self.raw(['in', '--config', config, '--agent', 'claude', '--approve', plan_id])
+        self.incoming('\nSecond incoming edit.\n')
+        plan_file, plan_id = self.auto_plan(config)
+        self.raw(['in', '--config', config, '--approve', plan_id])  # 無 --agent 的人工呼叫不受角色限制
+
 
 if __name__ == '__main__':
     unittest.main()

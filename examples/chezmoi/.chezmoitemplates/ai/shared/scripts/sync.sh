@@ -10,27 +10,41 @@ case "${1:-}" in
     shift
     engine_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd -P)
     exec python3 "$engine_dir/sync-migrate.py" "$@" ;;
-  plan|in|push)
+  plan|in|push|check)
     command -v python3 >/dev/null 2>&1 || fail 69 'MISSING_DEPENDENCY: Python required'
     engine_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd -P)
     exec python3 "$engine_dir/sync-write.py" "$@" ;;
-  *) fail 64 'USAGE: sync.sh status --source ABS_PATH --destination ABS_PATH [--scanner ABS_EXECUTABLE]' ;;
+  *) fail 64 'USAGE: sync.sh status [--config ABS_JSON] --source ABS_PATH --destination ABS_PATH [--profile P] [--scanner ABS_EXECUTABLE]' ;;
 esac
-src= dst= scanner= profile=claude-codex repository_profile=
+src= dst= scanner= profile= repository_profile= config= agent=
 while [ "$#" -gt 0 ]; do
   [ "$#" -ge 2 ] || fail 64 'USAGE: missing option value'
   case "$1" in
     --source) [ -z "$src" ] || fail 64 'USAGE: duplicate source'; src=$2 ;;
     --destination) [ -z "$dst" ] || fail 64 'USAGE: duplicate destination'; dst=$2 ;;
-    --profile) profile=$2 ;;
-    --repository-profile) repository_profile=$2 ;;
+    --profile) [ -z "$profile" ] || fail 64 'USAGE: duplicate profile'; profile=$2 ;;
+    --repository-profile) [ -z "$repository_profile" ] || fail 64 'USAGE: duplicate repository profile'; repository_profile=$2 ;;
     --scanner) [ -z "$scanner" ] || fail 64 'USAGE: duplicate scanner'; scanner=$2 ;;
+    --config) [ -z "$config" ] || fail 64 'USAGE: duplicate config'; config=$2 ;;
+    --agent) agent=$2 ;;
     *) fail 64 'USAGE: unknown option' ;;
   esac
   shift 2
 done
 engine_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd -P)
 formatter="$engine_dir/scan-secrets.py"
+# 本地參數檔只補足未明確給定的選項；命令列永遠優先。status 不使用 agent 身分。
+if [ -n "$config" ]; then
+  case "$config" in /*) ;; *) fail 64 'USAGE: explicit absolute paths required' ;; esac
+  python3 "$formatter" --config "$config" source >/dev/null 2>&1 || fail 78 'INVALID_CONFIG: reviewed local configuration required'
+  cfg() { python3 "$formatter" --config "$config" "$1" 2>/dev/null; }
+  [ -n "$src" ] || src=$(cfg source)
+  [ -n "$dst" ] || dst=$(cfg destination)
+  [ -n "$profile" ] || profile=$(cfg profile)
+  [ -n "$repository_profile" ] || repository_profile=$(cfg repository_profile)
+  [ -n "$scanner" ] || scanner=$(cfg scanner)
+fi
+[ -n "$profile" ] || profile=claude-codex
 [ -n "$scanner" ] || scanner=$formatter
 for p in "$src" "$dst" "$scanner"; do
   case "$p" in /*) ;; *) fail 64 'USAGE: explicit absolute paths required' ;; esac

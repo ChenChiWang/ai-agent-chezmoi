@@ -97,6 +97,41 @@ LOCATIONS = frozenset(
 # Checking their lexical relationship does not inspect inactive product files.
 TARGET_REGIONS = ('.claude', '.codex', '.agents', '.config/ai-agent')
 
+# 機器本地參數檔的封閉欄位集合。它提供路徑與身分，不提供任何寫入或發布授權。
+CONFIG_KEYS = dict(source='path', destination='path', plan_dir='path', scanner='path',
+                   profile='profile', repository_profile='profile', writer='agent',
+                   remote='text', branch='text', author_name='text', author_email='text',
+                   auto_in='bool')
+
+
+def load_config(path):
+    """Machine-local sync parameters: owner-controlled, closed key set, no secrets."""
+    p = Path(path)
+    if not p.is_absolute() or p.is_symlink():
+        raise ValueError('config path')
+    info = p.stat()
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+            or info.st_mode & 0o022 or info.st_size > 65536):
+        raise ValueError('config file')
+    doc = read_json(p)
+    if type(doc) is not dict or not set(doc) <= set(CONFIG_KEYS):
+        raise ValueError('config keys')
+    for key, value in doc.items():
+        kind = CONFIG_KEYS[key]
+        if kind == 'bool':
+            ok = type(value) is bool
+        else:
+            ok = type(value) is str and 0 < len(value) <= 4096 and not any(ord(c) < 32 for c in value)
+            if ok and kind == 'path':
+                ok = value.startswith('/')
+            elif ok and kind == 'profile':
+                ok = value in PROFILES
+            elif ok and kind == 'agent':
+                ok = value in ('claude', 'codex')
+        if not ok:
+            raise ValueError('config value')
+    return doc
+
 
 def overlaps(left, right):
     return left == right or left in right.parents or right in left.parents
@@ -287,6 +322,16 @@ def main():
             validate_layout(sys.argv[2], sys.argv[3], sys.argv[4], source_profile=sys.argv[5] if len(sys.argv) == 6 else None)
         except (ValueError, OSError):
             return 65
+        return 0
+    if len(sys.argv) == 4 and sys.argv[1] == '--config':
+        # 供 shell 入口讀取單一欄位；無此欄位輸出空字串，無效檔案回傳 78。
+        try:
+            doc = load_config(sys.argv[2])
+        except (ValueError, OSError, ScanError):
+            return 78
+        value = doc.get(sys.argv[3])
+        if value is not None:
+            print('true' if value is True else 'false' if value is False else value)
         return 0
     if len(sys.argv) == 4 and sys.argv[1] == '--schema':
         files, targets = mapping(sys.argv[2])

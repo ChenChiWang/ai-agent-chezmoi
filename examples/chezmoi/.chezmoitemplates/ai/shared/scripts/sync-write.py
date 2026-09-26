@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import signal
 import stat
@@ -33,6 +34,13 @@ LIMIT = api.MAX_BYTES
 class Block(Exception):
     def __init__(self, code, label):
         self.code, self.label = code, label
+
+
+# 純文字的共用來源：instructions、六個 skill、兩個 adapter。auto_in 只可自動套用這些檔案的變更。
+SHARED_TEXT = frozenset(
+    [PREFIX + 'shared/instructions.md']
+    + [PREFIX + 'shared/skills/' + s + '/SKILL.md' for s in api.SKILLS]
+    + [PREFIX + 'adapters/' + p + '.md' for p in ('claude', 'codex')])
 
 
 class Diagnostics:
@@ -73,7 +81,7 @@ class Diagnostics:
                    UnicodeDecodeError, KeyError, TypeError, RecursionError,
                    subprocess.SubprocessError, subprocess.CalledProcessError,
                    subprocess.TimeoutExpired, KeyboardInterrupt)
-        kind = type(error).__name__ if type(error) in allowed else 'unknown'
+        kind = type(error).__name__ if isinstance(error, allowed) else 'unknown'
         location = dict(file='unknown', line=None)
         trace = error.__traceback__
         while trace:
@@ -656,8 +664,7 @@ class Engine:
     def prepare_bundle(self, root, plan_id):
         """Persist only validated immutable candidates, external to source/HOME."""
         safe(root)
-        need(root.is_absolute() and not any(api.overlaps(root, p) for p in (self.src, self.dst)),
-             'EXTERNAL_PREPARED_STATE_REQUIRED')
+        need(root.is_absolute() and external(root, self.src, self.dst), 'EXTERNAL_PREPARED_STATE_REQUIRED')
         root.mkdir(mode=0o700, exist_ok=True)
         info = root.stat()
         need(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700, 'INVALID_PREPARED_STATE')
@@ -742,19 +749,67 @@ class Parser(argparse.ArgumentParser):
         raise Block(64, 'USAGE: explicit source, destination, remote, branch and plan required')
 
 
+def external(path, source, destination):
+    """Outside the source checkout and outside every deployment namespace."""
+    return (not api.overlaps(path, source) and path != destination
+            and not any(api.overlaps(path, destination / region) for region in api.TARGET_REGIONS))
+
+
+def configure(a):
+    """Fill options the caller left unset from the reviewed local configuration file."""
+    if not a.config:
+        return {}
+    need(Path(a.config).is_absolute(), 'USAGE: absolute paths required', 64)
+    try:
+        values = api.load_config(a.config)
+    except (ValueError, OSError, api.ScanError):
+        raise Block(78, 'INVALID_CONFIG') from None
+    for key in ('source', 'destination', 'branch', 'scanner', 'profile', 'repository_profile'):
+        if getattr(a, key) is None and key in values:
+            setattr(a, key, values[key])
+    if a.remote is None and not a.offline and 'remote' in values:
+        a.remote = values['remote']
+    for key in ('author_name', 'author_email'):
+        if not getattr(a, key) and key in values:
+            setattr(a, key, values[key])
+    return values
+
+
+def resolve_plan(a, values):
+    """Without --plan, a new plan file is created in plan_dir or an approved one is located by ID."""
+    if a.plan or 'plan_dir' not in values:
+        return
+    plan_dir = Path(values['plan_dir'])
+    if a.command == 'plan':
+        plan_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        stamp = time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())
+        a.plan = str(plan_dir / ('sync-plan-%s-%s-%s.json' % (a.operation, stamp, secrets.token_hex(4))))
+        return
+    need(plan_dir.is_dir(), 'PLAN_NOT_FOUND', 66)
+    plan_dir = plan_dir.resolve()
+    for candidate in sorted(plan_dir.glob('sync-plan-*.json'))[:1000]:
+        if candidate.is_symlink():
+            continue
+        value = read(candidate, missing=True)
+        if value and digest(value[0]) == a.approve:
+            a.plan = str(candidate)
+            return
+    raise Block(66, 'PLAN_NOT_FOUND')
+
+
 def arguments():
     p = Parser(add_help=True)
-    p.add_argument('command', choices=('plan', 'in', 'push'))
+    p.add_argument('command', choices=('plan', 'in', 'push', 'check'))
     p.add_argument('--operation', choices=('in', 'push'))
-    for arg in ('source', 'destination', 'branch', 'plan'):
-        p.add_argument('--' + arg, required=True)
-    p.add_argument('--remote')
-    p.add_argument('--profile', choices=api.PROFILES, default='claude-codex')
+    for arg in ('source', 'destination', 'branch', 'plan', 'remote', 'scanner', 'config'):
+        p.add_argument('--' + arg)
+    p.add_argument('--profile', choices=api.PROFILES)
     p.add_argument('--repository-profile', choices=api.PROFILES)
+    p.add_argument('--agent', choices=('claude', 'codex'))
     p.add_argument('--offline', action='store_true')
+    p.add_argument('--force', action='store_true')
     p.add_argument('--baseline')
     p.add_argument('--baseline-id')
-    p.add_argument('--scanner')
     p.add_argument('--approve')
     p.add_argument('--message', default='chore: sync shared agent configuration')
     p.add_argument('--author-name', default='')
@@ -763,16 +818,72 @@ def arguments():
     need(a.command != 'plan' or a.operation, 'USAGE: plan needs --operation in|push', 64)
     need(a.command == 'plan' or not a.operation, 'USAGE: operation is for plan only', 64)
     a.operation = a.operation if a.command == 'plan' else a.command
+    values = configure(a)
+    a.profile = a.profile or 'claude-codex'
+    need(a.source and a.destination and a.branch, 'USAGE: explicit source, destination and branch required', 64)
     need(not a.offline or (a.operation == 'in' and not a.remote), 'USAGE: offline is local in only', 64)
     need(a.offline or a.remote, 'USAGE: remote required', 64)
     need(not a.baseline or (a.offline and a.baseline_id), 'USAGE: baseline requires offline and ID', 64)
-    for value in (a.source, a.destination, a.plan, a.scanner or '/', a.baseline or '/'):
-        need(Path(value).is_absolute(), 'USAGE: absolute paths required', 64)
     for value in (a.message, a.author_name, a.author_email):
         need(len(value) <= 4096 and not any(ord(c) < 32 for c in value), 'USAGE: invalid text option', 64)
-    need(a.command == 'plan' or (a.approve and re.fullmatch('[0-9a-f]{64}', a.approve)),
+    # 角色：參數檔的 writer 決定哪個 agent 可以套用與發布；其他 agent 只能記錄、檢查、規劃。
+    writer = values.get('writer')
+    need(not (a.agent and writer and a.command in ('in', 'push') and a.agent != writer),
+         'NOT_WRITER: only the configured writer applies or publishes; report pending instead', 77)
+    a.config_values = values
+    if a.command == 'check':
+        need(not a.approve and not a.plan and not a.offline, 'USAGE: check takes no plan, approval or offline', 64)
+        for value in (a.source, a.destination, a.scanner or '/'):
+            need(Path(value).is_absolute(), 'USAGE: absolute paths required', 64)
+        return a
+    # auto_in：只有 in、只有參數檔明確為 true、且必須指明 plan 檔；push 永遠需要 --approve。
+    a.auto = (a.command == 'in' and not a.approve and values.get('auto_in') is True and bool(a.plan))
+    need(a.command == 'plan' or a.auto or (a.approve and re.fullmatch('[0-9a-f]{64}', a.approve)),
          'USAGE: --approve PLAN_ID required', 64)
+    resolve_plan(a, values)
+    need(a.plan, 'USAGE: --plan or configured plan_dir required', 64)
+    for value in (a.source, a.destination, a.plan, a.scanner or '/', a.baseline or '/'):
+        need(Path(value).is_absolute(), 'USAGE: absolute paths required', 64)
     return a
+
+
+def check(args):
+    """Remote freshness only: fetch into quarantine and compare, without scanning or writing a plan."""
+    values = args.config_values
+    state_file = Path(values['plan_dir']) / 'last-check.json' if 'plan_dir' in values else None
+    if state_file is not None and not args.force and state_file.parent.is_dir():
+        previous = read(state_file.parent.resolve() / state_file.name, missing=True)
+        if previous is not None:
+            record = json.loads(previous[0])
+            if (type(record) is dict and type(record.get('checked')) is int and type(record.get('result')) is str
+                    and time.strftime('%Y-%m-%d', time.localtime(record['checked'])) == time.strftime('%Y-%m-%d')):
+                print('CHECKED_TODAY: ' + time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(record['checked'])))
+                print('REMOTE: ' + record['result'] + ' (previous result; use --force to refresh)')
+                return 0
+    temporary = tempfile.TemporaryDirectory(prefix='ai-agent-check-', dir='/tmp')
+    try:
+        engine = Engine(args, Path(temporary.name))
+        remote_head = engine.fetch()
+        if remote_head == engine.head:
+            result = 'UP_TO_DATE'
+        elif engine.ancestor(engine.head, remote_head):
+            result = 'BEHIND %d' % len(engine.git('rev-list', engine.head + '..' + remote_head).split())
+        elif engine.ancestor(remote_head, engine.head):
+            result = 'AHEAD %d' % len(engine.git('rev-list', remote_head + '..' + engine.head).split())
+        else:
+            result = 'DIVERGED'
+    finally:
+        with diagnostics.cleaning('temporary_workspace'):
+            temporary.cleanup()
+    print('HEAD: ' + engine.head)
+    print('REMOTE_HEAD: ' + remote_head)
+    print('REMOTE: ' + result)
+    if state_file is not None:
+        state_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        target = state_file.parent.resolve() / state_file.name
+        atomic(target, (encoded(dict(checked=int(time.time()), head=engine.head, remote_head=remote_head,
+                                     result=result)), 0o600))
+    return 0
 
 
 def active_readers(source):
@@ -789,7 +900,8 @@ def cohort_metadata(source):
         return None
     data, mode = read(marker)
     doc = json.loads(data)
-    need(mode == 0o600 and doc.get('schema') == 1, 'INVALID_COHORT_METADATA')
+    need(type(doc) is dict and mode == 0o600 and doc.get('schema') == 1
+         and type(doc.get('destination')) is str and type(doc.get('state')) is str, 'INVALID_COHORT_METADATA')
     destination, state = Path(doc['destination']), Path(doc['state'])
     safe(state)
     need(destination.is_absolute() and state.is_absolute()
@@ -824,6 +936,7 @@ def cohort_receipt(source, destination, allow_pending=False):
         return path, None
     value, mode = read(path)
     receipt = json.loads(value)
+    need(type(receipt) is dict, 'INVALID_COHORT_RECEIPT')
     need(mode == 0o600 and path.stat().st_nlink == 1 and receipt.get('source') == str(source)
          and receipt.get('destination') == str(destination), 'INVALID_COHORT_RECEIPT')
     return path, receipt
@@ -946,18 +1059,25 @@ def main():
     os.umask(0o077)
     args = arguments()
     layout(args)  # Reject unsafe paths before even creating a source lock.
+    if args.command == 'check':
+        return check(args)
     plan_path = Path(args.plan)
-    safe(plan_path)
-    for root in (Path(args.source).resolve(), Path(args.destination).resolve()):
-        need(plan_path.resolve() != root and root not in plan_path.resolve().parents, 'INVALID_PLAN_PATH')
     need(plan_path.parent.is_dir(), 'INVALID_PLAN_PATH')
+    # 目錄別名（例如 macOS /tmp）先正規化；plan 本身不得是 symlink，且必須位於
+    # source 與所有部署區域之外。destination HOME 下的其他位置是允許的。
+    plan_path = plan_path.parent.resolve() / plan_path.name
+    need(not plan_path.is_symlink(), 'BLOCKED_SYMLINK')
+    need(external(plan_path, Path(args.source).resolve(), Path(args.destination).resolve()), 'INVALID_PLAN_PATH')
     approved = None
     if args.command != 'plan':
         value = read(plan_path)
         need(value[1] & 0o077 == 0, 'INVALID_PLAN_PERMISSIONS')
         approved = value[0]
+        if args.auto:
+            args.approve = digest(approved)
         need(digest(approved) == args.approve, 'BLOCKED_STALE_PLAN', 68)
         document = json.loads(approved)
+        need(type(document) is dict and type(document.get('plan')) is dict, 'INVALID_PLAN')
         need(type(document.get('created')) is int and 0 <= time.time() - document['created'] < 3600,
              'BLOCKED_EXPIRED_PLAN', 68)
     temporary = tempfile.TemporaryDirectory(prefix='ai-agent-write-', dir='/tmp')
@@ -987,12 +1107,20 @@ def main():
                 print('COMMITS: ' + str(len(result['commits'])))
                 print('REMOTE_ID: ' + digest(result['remote'].encode()))
                 print('BRANCH: ' + args.branch)
+                print('PLAN_FILE: ' + str(plan_path))
                 print('PLAN_ID: ' + digest(blob))
                 print('OK: review the private plan; approval expires in one hour')
             else:
                 need(document['plan'] == result, 'BLOCKED_STALE_PLAN', 68)
                 need(read(plan_path)[0] == approved, 'BLOCKED_STALE_PLAN', 68)
                 need(0 <= time.time() - document['created'] < 3600, 'BLOCKED_EXPIRED_PLAN', 68)
+                if args.auto:
+                    changed = {p for p in engine.files if result['candidate'][p] != result['baseline'][p]}
+                    if not changed <= SHARED_TEXT:
+                        print('PLAN_ID: ' + args.approve)
+                        raise Block(77, 'PENDING_APPROVAL: plan changes files outside shared text; '
+                                        'review and rerun with --approve PLAN_ID')
+                    print('AUTO_IN: shared text only; applied under the local auto_in policy')
                 if active_readers(engine.src):
                     diagnostics.mark('prepare_bundle')
                     bundle = engine.prepare_bundle(plan_path.parent / ('prepared-' + args.approve), args.approve)
@@ -1019,7 +1147,8 @@ def cli():
         print('INTERRUPTED: inspect transaction journal before retry')
         diagnostics.emit(error)
         return 130
-    except (OSError, ValueError, KeyError, TypeError, RecursionError, subprocess.SubprocessError) as error:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, RecursionError,
+            subprocess.SubprocessError) as error:
         print('IO_ERROR: operation stopped; no raw tool output exposed')
         diagnostics.emit(error)
         return 70
