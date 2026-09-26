@@ -16,6 +16,9 @@
 sh setup/preflight.sh
 ```
 
+原生 Windows（Git Bash、MSYS2、Cygwin）會得到 `FAIL platform`：引擎無法在上面執行，請改在 WSL 內
+進行，Claude Code 與 Codex 也要裝在 WSL 裡。
+
 | 工具 | 要求 | 補救 |
 | --- | --- | --- |
 | Git | 2.45 以上，支援 `--no-lazy-fetch` | 套件管理員安裝 |

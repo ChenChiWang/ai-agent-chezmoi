@@ -11,6 +11,10 @@ fail() { printf 'FAIL %s: %s -> %s\n' "$1" "$2" "$3"; fails=$((fails+1)); }
 vge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -t. -k1,1n -k2,2n -k3,3n | head -1)" = "$2" ]; }
 
 echo "platform: $(uname -s) $(uname -m)"
+# 原生 Windows（Git Bash、MSYS2、Cygwin）引擎無法執行；只在這些平台多印一行，POSIX 輸出不變。
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) fail platform "native Windows ($(uname -s)) unsupported" "use WSL, with Claude Code and Codex installed inside WSL (README: Requirements)" ;;
+esac
 if command -v git >/dev/null 2>&1; then
   gv=$(git --version | sed -E 's/.*version ([0-9.]+).*/\1/')
   if git --no-lazy-fetch --version >/dev/null 2>&1 && vge "$gv" 2.45; then ok git "$gv with --no-lazy-fetch"; else fail git "$gv lacks --no-lazy-fetch" "install Git 2.45 or newer"; fi

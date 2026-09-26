@@ -176,7 +176,7 @@ it over an existing agent configuration.
 ## Tests
 
 ```sh
-sh tests/test-render.sh && sh tests/test-status.sh
+sh tests/test-render.sh && sh tests/test-status.sh && sh tests/test-preflight.sh
 python3 tests/test-write.py && python3 tests/test-layout.py
 python3 tests/test-migration.py && python3 tests/test-offline-status.py
 python3 tests/test-scanner.py                    # needs the real Gitleaks 8.30.1

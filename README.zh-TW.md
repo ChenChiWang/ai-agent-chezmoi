@@ -150,7 +150,7 @@ sh ~/.config/ai-agent/bin/sync.sh push --config ~/.config/ai-agent/sync.local.js
 ## 測試
 
 ```sh
-sh tests/test-render.sh && sh tests/test-status.sh
+sh tests/test-render.sh && sh tests/test-status.sh && sh tests/test-preflight.sh
 python3 tests/test-write.py && python3 tests/test-layout.py
 python3 tests/test-migration.py && python3 tests/test-offline-status.py
 python3 tests/test-scanner.py                    # 需要真實 Gitleaks 8.30.1
