@@ -1,5 +1,462 @@
 # Implementation status
 
+## Latest — approved Codex incoming PASS; overall runtime PARTIAL (2026-09-25)
+
+- Explicitly approved diagnostic plan `8848cc87e13d93a812a10460ab3ef1e814abf65869a5c629a99bdd88513af9bb`
+  executed once by the original Codex session, exit **0**. The operator did not run in.
+- Agent checked all **21 targets**, re-read shared source, both deployed instructions
+  and relevant skill source/outputs, then used **示例：250 ms** without claiming measurement.
+  Operator independently confirmed source/targets, HEAD/index and clean worktree.
+- Remote unchanged; only the two instructions changed deployed content. Modes match
+  the plan. Diagnostic engine remains external, not deployed. Protected auth/config
+  metadata unchanged; no remaining sync/index locks or transaction journals.
+- Initial outer-sandbox launch failed before native session initialization, with no
+  in call. After explicit escalation approval, the native session resumed with its
+  existing restricted permission profile; only one actual in was issued.
+- Original IO_ERROR evidence/root-cause uncertainty and original startup results
+  remain unchanged. This authorized continuation is not a new proactive-start PASS.
+  Claude startup path and unsupported timing-answer issues remain separate.
+- No outgoing, new commits/pushes, installation or production changes. Overall
+  acceptance remains **agent-driven runtime PARTIAL**. Stopped after result recording.
+
+## Previous — sanitized diagnostics verified; new Codex plan awaiting approval (2026-09-25)
+
+- Runtime acceptance remains **PARTIAL**. This round adds error diagnostics only;
+  no incoming retry, outgoing, native model smoke test or production deployment.
+- `sync-write.py` retains existing stdout/exit codes and synchronization steps.
+  Error stderr now reports allowlisted phase/operation/type, optional errno,
+  project basename/line, transaction start and rollback/cleanup outcomes.
+  The first error remains separate from secondary recovery/cleanup failures.
+- Existing write suite: **31 tests PASS**; final error-deduplication adjustment:
+  all **4 diagnostic fault-injection tests PASS**. File/Git/journal assertions
+  distinguish no transaction, successful rollback and retained recovery data;
+  synthetic sensitive exception text/path does not appear in output.
+- Original Codex IO_ERROR still lacks its underlying traceback/errno. A separate
+  permission probe observed EPERM creating the source Git lock under the original
+  sandbox; this does not recover or prove the original failing operation.
+- A new plan uses a private fixture-only diagnostic tool bundle, leaving the
+  original remote candidate and deployed engine unchanged until approved incoming.
+  Old plan approval does not transfer. See the runtime validation report.
+- Preserve Claude incoming/file/read evidence, startup wrong-path failure and
+  unsupported timing claims as separate results. No retroactive PASS.
+
+## Previous — agent-driven runtime PARTIAL; fixed incoming validation stopped (2026-09-25)
+
+- Overall acceptance remains **agent-driven runtime PARTIAL**. Preserve prior
+  project-memory and finish results below; do not relabel reminders as proactive PASS.
+- Latest scope: complete the two approved incoming scenarios and stop. Outgoing is
+  not authorized this round. Existing isolated login/config roots are reused;
+  no engine, launcher, guardian or test-framework changes.
+- Minimal common instructions/skill clarification: startup requires a v2 incoming
+  plan for remote freshness; missing network/inspection permission requires a
+  specific approval request. Apply approval remains separate from inspection.
+- User explicitly approved only fixed-gap fixture baseline/local remote seeding.
+  Both fixtures were prepared with clean baseline source/deployment and a local remote exactly
+  one commit ahead, changing only the reviewed shared duration-unit memory.
+  Real scanner checks pass. Seed approval alone did not authorize runtime in/push.
+- One fresh native startup per agent, using the fixed ordinary project prompt:
+  both proactively invoke the skill and attempt incoming planning before project reads.
+  Claude chooses /tmp rather than the supplied plan directory and hits BLOCKED_SYMLINK;
+  correctly reports unknown freshness, but update discovery/concrete approval FAIL.
+  Codex produces/reads its plan, inspects actual remote diff and requests approval PASS.
+  No rule changes or startup retests followed the Claude failure.
+- Operator generated one Claude plan in the provided directory, explicitly assisted,
+  not Claude proactive PASS. Both real incoming plans were presented for user review;
+  include mapped-file mode normalization as well as the shared memory content update.
+  All deployed content/modes were unchanged and projects clean after startup turns.
+- User subsequently approved both exact incoming PLAN_IDs and the 21 target mode
+  changes, but no outgoing. At 2026-09-25 05:31:49 UTC, both unexpired plans match
+  source/remote identities, actual source/target hashes and modes, and engine tools.
+  User separately allowed necessary native session records, not sync-managed runtime.
+  Both original sessions resumed after a fresh expiry/hash check at 05:46:42 UTC.
+  No operator in, no plan renewal, no transfer of approval to a new ID.
+- Claude: agent invoked approved in successfully, then Read the updated shared source
+  and both deployed instructions; all three tool results contain the new marker/rule.
+  Operator independently verified all 39 source and 21 target hashes/modes against
+  the candidate. Agent status and sampled stat pass; some direct stat calls were
+  permission-blocked, so full verification is not labeled agent-only.
+  Content-use PARTIAL: uses ms units but claims unsupported measured 900 ms/150 ms.
+  Unchanged skill reread was explicitly skipped. Startup discovery FAIL is retained.
+- Codex: agent verified original plan/state/candidate, invoked approved in, received
+  exit 70 IO_ERROR and stopped. Operator confirms all source/target hashes and modes
+  remain at pre-apply state, source still baseline, no checked lock/journal remains.
+  Cause not established; no retry or sandbox/protection workaround. Post-sync reread
+  and content use NOT RUN. Startup discovery/approval PASS is retained.
+- Both original plan files unchanged, local remotes unchanged, projects clean.
+  Credential/config metadata checks unchanged; no credential contents read by verifier,
+  no Keychain operation, no outgoing plan/commit/push. Native session records are
+  outside sync mapping and retain the separately authorized native lifecycle.
+- Acceptance is recorded separately for proactive trigger, approved script execution,
+  and deployed-file/actual reread evidence. Fixed incoming run is finished and stopped;
+  no additional prompts to turn partial results into PASS. Outgoing remains unauthorized.
+- No production/private deployment, public/private commit/push, bootstrap or 4H.
+- [Fixed scenarios, prepared fixture content and separate acceptance matrix](agent-driven-runtime-validation.md).
+
+## Previous — agent-driven runtime smoke completed with limitations (2026-09-25)
+
+- Test-only auth now succeeds for both agents. Claude stores its native fallback in
+  the test CLAUDE_CONFIG_DIR; no production credential copied/linked or Keychain reset.
+  Auth success and model success were checked separately. Actual models: Claude Code
+  2.1.278 -> claude-sonnet-5 (`--model sonnet`); Codex CLI 0.155.1 -> gpt-6-astra
+  (native turn_context, test default with low reasoning). No permanent model change.
+- Each initial session used three consecutive turns: ordinary README/calc inspection,
+  confirmed invoice integer-cents decision, then 「今天先到這裡」. No user prompt named
+  synchronization or the skill. Project metadata supplied fixture roots, permissions
+  and the project decision location, but no start/end trigger instruction. Shared
+  instructions and skill were deployed from public templates through chezmoi.
+- Codex: start PASS (read shared skill -> real status -> incoming plan/read plan ->
+  project read), project-memory PASS (actual file edit/readback; clearly local only),
+  finish PASS (read decision, source status/HEAD/local remote check + real status;
+  no commit/push). All three turns returned successfully in the same native thread.
+- Claude initial: model responded successfully, but start FAIL (project reads before
+  any skill/status). Project decision written correctly; finish invoked Skill and
+  status. Initial evidence retained, not relabeled PASS.
+- One minimal public instructions change: an explicit Required memory checkpoints
+  section requires skill/check before first project read, including short read-only
+  tasks, and actual end-of-work checks. No skill/engine/launcher/guardian changes.
+- Exactly one fresh Claude session retest (three turns): Skill -> actual status
+  precedes project reads; decision Edit targets project docs/decisions.md and reports
+  local-only/pending publication; final status + project git status confirms pending
+  decision without commit. Trigger/order/local record checks PASS. Claude did not
+  create an incoming plan, so remote freshness is NOT VERIFIED; no further retry.
+- Neither agent executed in/push; fixture source and remote began equal. Changed
+  incoming sync and post-sync re-read are NOT EXERCISED, not PASS. Permission boundary
+  allowed inspection/planning and project edits only; no fake apply/publish consent.
+  This is a bounded smoke result, not full acceptance of every sync branch or model
+  reliability. Historical mixed-revision/loading gate remains BLOCKED.
+- Final evidence: both source trees clean; source HEAD = local bare main; only project
+  docs/decisions.md modified; each project still has one baseline commit. Codex source
+  has one fixture baseline; Claude has a second operator-created fixture commit solely
+  to deploy the instructions clarification between ended sessions. Neither model
+  created any commit. Both final deployed v2 statuses pass with real Gitleaks 8.30.1.
+  `sh tests/test-render.sh` and `git diff --check` pass. No new test framework installed.
+- Owner-private evidence stays at /private/tmp/agent-memory-smoke-zvbvglbl:
+  runtime-summary.json contains selected tool calls and file/Git results; per-agent
+  evidence/turn0–2.jsonl contains native events; Claude evidence/initial preserves
+  the original failure. Auth data is excluded from source, Git and reports. Do not
+  archive whole test HOME; native runtime/auth directories are not test-report inputs.
+- Cleanup NOT executed: after review, manually remove only Codex test auth.json and
+  Claude test .credentials.json; remove only the exact test Keychain service entry
+  (Claude Code-credentials-f1961f75) if present. Do not reset Keychain, delete the
+  production entry or run general logout. Local deletion is not token revocation.
+- No production/private changes, public/private commit/push, bootstrap or 4H. Stop.
+
+## Previous — isolated native login prepared; waiting for user (2026-09-25)
+
+- User authorized native login storage in the existing test roots, with browser
+  authorization performed personally. No credential copy/export/link, production
+  logout or model-preference change. No synchronization logic changes.
+- Pinned executables: Claude 2.1.278 and Codex 0.155.1. Both login help commands
+  were checked under isolated HOME. No login command or model request executed.
+- Claude official authentication documentation confirms CLAUDE_CONFIG_DIR scopes
+  both Keychain entry and fallback .credentials.json. Installed binary additionally
+  shows credential service suffix derived from SHA-256(config directory), first
+  eight hex characters; secure-storage env override takes precedence. Commands use
+  env -i so that override cannot leak from the user's shell. Fixed test directory:
+  /private/tmp/agent-memory-smoke-zvbvglbl/claude/home/.claude;
+  expected default-production-OAuth test service: Claude Code-credentials-f1961f75.
+  No Keychain credential value read/exported; no Keychain write/delete performed.
+- Codex uses /private/tmp/agent-memory-smoke-zvbvglbl/codex/home/.codex
+  and explicit cli_auth_credentials_store="file" for login, status AND all later
+  runtime invocations. Expected secret file: that directory's auth.json. No further
+  keyring debugging. Claude auth login --claudeai uses the subscription browser flow.
+- Login and runtime env contract: per-agent HOME, CLAUDE_CONFIG_DIR, CODEX_HOME,
+  XDG_CONFIG_HOME, XDG_CACHE_HOME, TMPDIR under its test home; LC_ALL=C;
+  PATH=/usr/bin:/bin:/opt/homebrew/bin:~/.local/bin;
+  GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_NOSYSTEM=1;
+  DISABLE_AUTOUPDATER=1, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1.
+  Native binary is absolute and cwd is the corresponding isolated project directory.
+  Do not change the literal Claude directory or add a trailing slash between runs.
+- User-facing Terminal commands provided for browser login only; user should report
+  completion, not URLs/codes/tokens or raw auth files. Next action after completion:
+  sanitize same-environment auth status, then separately qualify model requests and
+  the three runtime triggers. Auth success alone is not a runtime PASS.
+- Credentials stay outside all Git fixtures and chezmoi mapping. Never include auth
+  directories in broad artifact snapshots, reports or Git adds. Test root may be
+  removed by OS temporary cleanup; do not silently switch roots or borrow production.
+- Cleanup after tests is manual/reviewed: remove ONLY Codex test auth.json and Claude
+  test fallback .credentials.json if present; in Keychain Access remove ONLY the exact
+  test service/account entry after confirming identity. Do not delete unsuffixed
+  Claude Code-credentials, use broad matches or run production logout. Full test-home
+  cleanup only after safe evidence review, without copying login data into artifacts.
+  These actions have NOT been executed. No claim of server-side token revocation.
+
+## Previous — agent-driven runtime smoke preflight BLOCKED (2026-09-25)
+
+- User accepted the shared instructions/skill and isolated scripted validation;
+  requested one short Claude and one short Codex session, each testing unprompted
+  start, confirmed project decision, and end of work. No family tracking work resumed.
+- Inspected existing native fixture: it intentionally supplies no auth and does not
+  send model requests. Prior Phase 3 runtime used production configuration and cannot
+  be reused as an isolated authenticated fixture under this request.
+- Created separate owner-private fixture HOME/config/cache/tmp/project roots below
+  `/private/tmp/agent-memory-smoke-zvbvglbl`. Environment uses explicit isolated
+  HOME, CLAUDE_CONFIG_DIR, CODEX_HOME and XDG paths; no production credential symlinks,
+  copied auth files, user Git config, or inherited credential environment. Existing
+  auth environment variables were checked for presence only; all four checked were absent.
+- Native version/auth preflight (no model requests): Claude Code 2.1.278 reports
+  `loggedIn=false`, `authMethod=none`, exit 1; Codex CLI 0.155.1 file store reports
+  not logged in, exit 1; explicit keyring store exits 1 with a keyring-related error.
+  Keyring's exact underlying cause is not established; it is not reported as simply
+  an absent account. Rechecked Claude/keyring outside the sandbox to distinguish
+  sandbox interference: neither returned usable authentication.
+- Both agents: **start / during work / finish / post-sync re-read NOT RUN**, blocked
+  at isolated authentication preflight. Models were not selected or called. This is
+  not an instruction-trigger failure; no skill tweak or retry of model behavior.
+- Evidence: `preflight.json`, `auth-recheck.json`, `scope-check.json` in the root above
+  contain sanitized status only. No credential payload or raw auth output saved.
+  No source/destination deployment, local Git fixture or task files created after the
+  failed gate; empty project directories are preparation, not runtime test evidence.
+- Current constraints leave no verified way to reuse the account in this isolated
+  environment. Do not copy/link production credentials, point config roots back to
+  production, create a credential bridge, or initiate a new login automatically.
+  A separately approved isolated authentication arrangement is needed before retry.
+- No new framework/dependency, production/private change, model preference change,
+  public/private commit/push, bootstrap or 4H. Only this status documentation changed.
+
+## Previous — agent-driven memory sync (2026-09-25)
+
+- New requirement supersedes pre-CLI automatic family tracking. Daily sync uses
+  Shared Core + common skill + v2; bootstrap is separate. No further family
+  retirement research, new loading implementation or installation this round.
+- Updated only shared instructions and the shared skill as executable policy:
+  first-turn check, confirmed durable memory, task/end-of-work check; re-read after
+  sync; explicit recorded/applied/published/pending states and restart guidance.
+- Existing authorization may cover reviewed operations; missing scope remains pending
+  approval. Local status is offline, not evidence of remote freshness. Existing
+  barriers, scanner, drift and writer protections are unchanged.
+- [Requirements, approval gap and acceptance matrix](sync-v2.md#agent-driven-memory-checkpoints-2026-09-25).
+- Validation: `python3 -B tests/test-write.py`: 27 PASS (85.194s), including
+  real Gitleaks 8.30.1, no-op publication, network failure, drift/conflict, stale
+  plans, locks/journals and failed-push recovery. `test-offline-status.py`: 6 PASS
+  (6.456s). `ScannerTests.test_missing_tool`: PASS (required dependency refusal).
+  `sh tests/test-render.sh`: PASS (both adapters, shared edits/skills, repeat apply).
+- Additional disposable Git/chezmoi workflow: incoming update + two-agent re-read,
+  missing approval rejection without mutation, source-only memory vs publication,
+  identical deployed skill copies, and no-op finish without new commit all PASS.
+  This scripted fixture used the existing reviewed scanner test adapter; real scanner
+  coverage is separately included in test-write. All commits/pushes were fixture-local.
+- Manual policy review covers all three checkpoints, global/project authority,
+  reporting states, known concurrent-use deferral, offline and pending approval.
+  This is not a model runtime invocation test. No claim that every model will
+  autonomously trigger the skill; no production deployment. Historical loading gate
+  remains BLOCKED; prior research/tests retained.
+- Hash audit against the pre-change public implementation/test/example snapshot:
+  only the two intended shared text sources changed; engine/bootstrap/tests unchanged.
+  `git diff --check` passed. Existing uncommitted work was retained.
+- No production/private edits, tool installation, commit/push or 4H.
+
+## Previous — family retirement inspection/proposal only (2026-09-25)
+
+- Enrollment repair and existing race/crash protection retained without code changes.
+- Inspected actual root watcher, guardian handshake, leases/recovery and managed writer barriers.
+  Root-only kqueue cannot distinguish reaped descendants from live descendants; polling cannot
+  close the fork/attach gap. **Family retirement/loading gate remains BLOCKED.**
+- No reliable small fix established within the current unprivileged mechanism. A richer kernel
+  event backend is conditional on additional approval, permissions and completeness qualification;
+  no tracking implementation, dependencies or services added.
+- [Evidence, conditional scope/permissions, acceptance matrix and uncovered entrypoints](phase-4-blocker-repair.md).
+  Stop for implementation review. No production/private changes, commit/push or 4H.
+
+## Previous — two-blocker repair within the accepted cohort model (2026-09-24)
+
+- Current user scope is only enrollment consistency, exact reader evidence and
+  related regression/entrypoint coverage. No loading-model change or broader
+  tool/PATH/statusLine implementation this round.
+- Enrollment ordering/readiness is repaired: barrier is held and flushed before
+  receipt publication; pending/corrupt state blocks admission/activation; approved
+  rollback and re-plan/rerun pass seven hard-crash boundaries and fsync failure.
+- Native root fork/exit events are confirmed for both agents. Root-only kqueue
+  observation lacks descendant identities, continuous lineage and descendant exit
+  events. Reaped-child and still-live-child fixtures both retain uncertainty; no
+  inferred cleanup. **Family retirement and loading gate remain BLOCKED.**
+- Administrative/inactive shim calls may skip refresh but still require complete
+  configuration and successful reader protection. Raw CLI/IDE/chezmoi/editor paths
+  outside the shim/protocol are explicitly outside the guarantee.
+- [Root causes, minimal four-file change, tests and coverage](phase-4-blocker-repair.md).
+  No production/private edits, commit/push or 4H. Stop after this review.
+
+The following entries are historical; the latest scope/status above supersedes them.
+
+## Previous — Phase 4 cohort implementation BLOCKED (2026-09-24)
+
+Generation cohort design is accepted; consecutive isolated 4B–4G implementation was
+authorized. Real guardian/v2 integration, exec signal bridge, pinned Git/Node build
+and owned PATH lifecycle have progressed. 38 focused tests pass. Actual Claude and
+Codex discover six skills through the guardian, but both ordinary minimal sessions
+leave UNCERTAIN_FAMILY: normal-session family retirement is not qualified. Review
+also reproduced an initial-enrollment interruption gap. Work stopped under the
+new safety/native-qualification stop condition; **4B–4G is not PASS**.
+
+No production/private edits, public/private commit/push, or 4H. StatusLine and full
+fresh-machine/upgrade validation remain incomplete. See the authoritative current
+[implementation evidence, review findings and continuation](phase-4-cohort-implementation.md).
+The sections below are historical; their pending-design/short-lease scope is superseded.
+
+## Historical generation-cohort design — isolated validation PASS (subsequently accepted)
+
+- Latest user scope: design + isolated race/crash/recovery only; session-length
+  reader leases allowed; no hot reload, hooks or native discovery-path changes.
+  Stop after review preparation; do not continue other 4B–4G work.
+- Fixed-path active generation admits concurrent Claude/Codex readers. Pending
+  generation preparation is independent; activation waits for zero readers.
+- 11 isolated model tests cover concurrent admission, deferred publication, stale/
+  crashed readers, PID reuse, kernel exec/exit observation, guarded recovery at
+  every mapped write boundary, drift refusal, and exec/TTY/streams/signal behavior.
+- Native Claude 2.1.278/Codex 0.155.1 discovery sees complete A before and B after
+  activation, using original fixture paths and no hooks/model/auth requests.
+- Native snapshot routing is no longer required. Production guardian/family-lifetime
+  qualification and real v2 transaction integration are not implemented by this
+  design-only round. No production/private changes, commit/push or 4H.
+- [Design, evidence, limitations and review outcome](phase-4-generation-cohorts.md).
+
+## Phase 4 loading redesign — native race confirmed (2026-09-24)
+
+- User explicitly rejected lifecycle callbacks and requested agent-independent
+  sync/validation/deployment followed by unlocked native exec.
+- Reproduced mixed skill revisions in actual Claude 2.1.278 and Codex 0.155.1
+  during a paused real v2 fixture transaction, with hooks disabled and no model
+  requests. Atomic per-file writes and a global atomic pointer are insufficient.
+- Test-only immutable-generation pinning passes 5 isolated tests without a reader
+  lease. Native routing remains NOT PASS: CODEX_HOME-only uses snapshot instructions
+  but still discovers live HOME skills. No HOME/auth/runtime relocation was added.
+- Existing launcher CLI transport checks: 3 targeted tests PASS. This is not native
+  snapshot-launcher qualification. Remaining 4B–4G work is conditional on this gate
+  and was not advanced. Production/private untouched, no commit/push or 4H.
+- [Design, native evidence, scope and gate matrix](phase-4-consistent-loading.md).
+
+## Phase 4B–4G follow-up — stopped at loading safety finding (2026-09-24)
+
+- Latest authorization permits consecutive isolated 4B–4G work; no per-phase
+  approval is needed. 4H real second-machine deployment remains excluded.
+- Native Claude 2.1.278 negative qualification reproduced successful `--init-only`
+  with SessionStart, and successful `--init-only --settings
+  '{"disableAllHooks":true}'` without the callback. No model/auth request was made.
+- A SessionStart-only release cannot cover preserved CLI settings overrides, and
+  does not establish all skill loading is finished. Stopped under the user's
+  safety/regression condition; no unsafe release or forced hooks were added.
+- Three blockers and full 4B–4G overall validation remain incomplete. No production
+  changes, private changes, commit/push or 4H. [Evidence and remaining work](phase-4-loading-safety.md).
+
+## Previous Phase 4B — isolated implementation, acceptance blocked (2026-09-24)
+
+- 4A accepted; 4B implementation and isolated fixtures authorized. No production
+  command/tool/private-dotfiles changes, no commits/pushes, and no 4C–4H execution.
+- Added three-profile bootstrap plan/apply/switch/recover, full-repository versus
+  active-target scope, pinned artifact mechanism and exact-revision acquisition.
+- One neutral launch controller reuses v2 Engine; thin shims preserve vendor argv,
+  inherited streams, cwd/umask and exit/signal behavior in isolated CLI/PTY tests.
+- Tests passed: bootstrap 24, nested layout/migration/write 61, scanner 10, offline
+  status 6, shell render/status. Standalone write 27 and migration 24 also passed
+  during implementation; these overlap with the nested suite.
+- **Not 4B PASS:** conservative reader leases last for the session and block v2
+  writes during that session; short loading-complete integration remains unresolved.
+  Git/Python/Claude/Node remain explicit prerequisites; complete empty-Mac setup,
+  PATH/minimum-OS/toolchain qualification and Claude statusLine support remain gates.
+- [Review findings and evidence](phase-4b-validation.md),
+  [implementation interfaces](../bootstrap/README.md). Stop for review.
+
+
+## Historical Phase 4A — accepted design
+
+- Scope is public documentation only; Phase 3 remains COMPLETE. No production
+  private change, tool installation/removal, bootstrap execution or commit/push.
+- [Design](phase-4-bootstrap-design.md) defines new-macOS tool/profile plans,
+  three profiles (`claude`, `codex`, `claude-codex`), independent agent/tool/auth
+  readiness, bounded deployment, runtime-state exclusion, idempotent reruns,
+  explicit upgrade/profile switching/reactivation and guarded recovery.
+- Existing implementation gaps are explicit: absent-target bootstrap transaction,
+  full-repository history versus selected deployment profile, stock chezmoi profile
+  behavior, reproducible tool lock and statusLine portability/dependencies.
+- Additional read-only production launch audit found neither Claude nor Codex
+  has managed launch-sync: no configured sync hook/launcher, and deployed skills
+  prohibit session-start writes. Both require the new pre-exec launch controller.
+  Design now specifies standing-policy plan/in, offline/dirty/drift/lock/dependency
+  outcomes, agent independence, and pending reader-barrier/timeout qualification.
+  No production mutation or launch-sync execution occurred.
+- [Proposed 4B–4H roadmap](phase-4-roadmap.md) requires later authorization. No
+  fixture or real-machine bootstrap PASS is claimed. Stop for 4A review.
+
+## Phase 3 COMPLETE — 3H publication (2026-09-23)
+
+- Explicit 3H authorization followed accepted 3F/3G PASS.
+- Private commit: `19a27374a0ff2d1d4739f3d9a9c6bd2e46471ab9`. Normal fast-forward push to
+  origin/main succeeded; local HEAD, origin/main and actual remote main agree.
+  Private working tree is clean.
+- Pinned Gitleaks 8.30.1 full candidate/diff and actual commit scans passed.
+  Only mapped sources plus unchanged legacy README are tracked; machine-local
+  trust/auth/session state is excluded.
+- Precommit and post-push render/status/drift validation passed for 21 targets;
+  original Claude behavior/config and shared six-skill authority are preserved.
+- Rollback packages/blobs retained and integrity verified. Old rollback commands
+  deliberately reject the newly committed HEAD/index; later rollback requires a
+  separately reviewed recovery plan. No guard bypass or deployment rollback ran.
+- See [3H finalization](phase-3h-validation.md). Phase 3 is complete; stopped.
+
+## Historical Phase 3E–3G gate — PASS, stopped before 3H
+
+- 3E remains deployed: eight source additions and seven Codex targets; Claude
+  unchanged. External expansion baseline and isolated rollback remain available.
+- User-authorized cleanup removed only the test-directory trust section from
+  Codex config. Exact pre-3E bytes and mode 0600 restored; all other settings kept.
+- Post-restoration final validation passed: 21 actual renders, empty chezmoi diff,
+  both profile scanner statuses, migration verify, shared rules and six skill
+  pairs, original Claude 3D manifest, private HEAD/index/config and restored config.
+- Source boundary confirmed: 39 mapped files plus unchanged legacy README;
+  actual chezmoi managed files exactly match 21 mapped targets. Codex project
+  trust, authentication, sessions and other runtime state remain outside authority.
+- Prior successful actual Claude/Codex runtime and cross-agent fixture/no-op sync
+  evidence is retained for the unchanged deployment; no new model run is claimed.
+- **3F/3G PASS.** No deployment rollback, private commit/push or Phase 3H execution.
+  See [validation matrix](phase-3efg-validation.md) for evidence and limitations.
+
+## Completed production Phase 3A–3D gate (before 3E authorization)
+
+- Authorized public reference: `15f17ca3ed349a48142f8ada8b62ca8568c1426d`.
+  Production nested layout, clean legacy source/index, inventory/deployed equality
+  and Gitleaks 8.30.1 preflight passed.
+- 3A PASS: owner-private baseline outside HOME; verified blob/manifest integrity;
+  actual-content isolated conversion, 14 chezmoi renders, real scanner status and
+  complete rollback passed with files/modes/Git state restored exactly.
+- 3B/3C applied using the approved Claude-only plan. Source diff: 28 creates,
+  eight legacy plain-source removals, one metadata replacement; two unchanged.
+  Target diff: five neutral engine files created, three sync/instruction outputs
+  replaced, six existing skill/settings outputs unchanged. No Codex adapter.
+- Production manifest bytes/modes, all 14 chezmoi renders, normal-shell scoped
+  apply/diff idempotence, pinned scanner status, offline plan/in and legacy wrapper
+  status passed. HEAD/index/config and the approved source/target state were
+  rechecked unchanged after the Claude runtime attempt.
+- Harness correction: setting process-wide umask077 for private logs caused a
+  permission-only chezmoi diff. The unmodified shell uses umask022 and produces
+  an empty diff. Logs now receive explicit 0600 permissions without changing the
+  test process umask. No production permission correction was needed or applied.
+- Initial 3D runtime attempt was blocked by external credits/limit. The user then
+  explicitly authorized session-only model substitution without changing settings.
+- **3D PASS:** actual Claude `--model sonnet` initialization discovered all six
+  skills; six real Skill calls returned non-error results from deployed user skill
+  directories. The successful response confirmed shared language, comment, commit,
+  signature, uncertainty, destructive-action and sync policies, with individual
+  skill content summaries. There were no non-Skill tool calls.
+- Actual existing statusLine command and user widget configuration passed startup
+  and active-context stdin tests: exit 0, nonempty output, expected model/branch,
+  context-dependent output and empty stderr. Settings/widget configuration hashes
+  were unchanged. A test assertion was corrected to normalize NBSP characters;
+  no production output/configuration adjustment was needed.
+- Additional deployed-engine checks on the external actual-content copy passed:
+  propagation of rules plus all six skills, drift status, stale approval refusal,
+  offline push refusal, scoped restoration and rollback. A reverse edit against
+  the unchanged bootstrap baseline correctly returned DRIFT; the copy was restored
+  using scoped chezmoi as in the accepted fixture contract, without bypassing v2.
+- Final production status and scoped chezmoi diff passed. All approved source and
+  target bytes/modes, private HEAD/index/config, and original model preference and
+  settings were preserved. Detailed evidence, test types and limits are in the
+  [3D validation matrix](phase-3-validation.md).
+- Stopped with the migrated deployment retained and rollback available. No private
+  commit/push, Phase 3E–3H execution or automatic production rollback occurred.
+  Owner-private detailed evidence: `/Users/Shared/ai-agent-migration-<user>/phase3-20260922-221058/`.
+  See its `ROLLBACK.md` and `review/phase3-result.json`; never publish backup/log
+  payloads. [Roadmap](phase-3-roadmap.md) records the mandatory stop.
+
 ## Phase 2.7 Production Layout Compatibility (2026-09-22)
 
 - Public baseline: `50fabd55bd2d6d8865501ce739184937d3d0560b`. The user

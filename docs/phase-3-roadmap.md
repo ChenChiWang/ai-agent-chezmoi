@@ -1,6 +1,64 @@
 # Phase 3 migration roadmap
 
-## Current gate: public Phase 2.7 only; Phase 3 remains stopped
+## Current status: Phase 3 COMPLETE (2026-09-23)
+
+After accepting 3F/3G PASS, the user explicitly authorized 3H. The reviewed private
+migration was committed as `19a27374a0ff2d1d4739f3d9a9c6bd2e46471ab9` and pushed to private
+`OWNER/dotfiles` origin/main. Local HEAD, remote-tracking origin/main and the
+actual remote tip match; the private working tree is clean.
+
+Gitleaks 8.30.1 scanned the complete candidate tree, full conversion patch including
+legacy deletions, old changed content and commit metadata. Both precommit and
+actual-commit scans passed with no findings. Tracked scope is 39 mapped sources
+plus the unchanged legacy README; no machine-local state was added.
+
+Precommit and post-push checks passed for all 21 renders, both profile statuses,
+empty chezmoi diff, shared rules/six-skill equality, Claude preservation and restored
+Codex config. The post-push check was read-only for production Git/config/targets;
+its index remained unchanged. Prior actual runtime validation remains the 3D/3F/3G
+evidence. See [3H finalization](phase-3h-validation.md).
+
+Both external rollback packages and their verified blobs are retained. Original
+migration rollback commands bind the pre-publication HEAD/index and now intentionally
+refuse that changed Git state. Any future rollback requires separately reviewed
+published-history recovery and scoped deployment from retained manifests; do not
+bypass guards or blindly run the old command. Work is complete and stopped.
+
+## Completed 3D gate
+
+The user accepted public baseline `15f17ca3ed349a48142f8ada8b62ca8568c1426d`
+and explicitly reauthorized production 3A–3D. The baseline/rollback package was
+created outside HOME, verified by hashes, and rehearsed with actual scoped private
+content in an owner-private isolated copy. Conversion/verification, real chezmoi
+rendering and complete rollback restored the copy's files, modes and Git state.
+
+Production Claude-only migration is now applied. All 14 target bytes/modes match
+the approved manifest; five portable skill payloads and settings are preserved.
+Normal-shell scoped chezmoi apply/diff, pinned scanner status, offline plan/in,
+legacy wrapper forwarding and post-operation verification passed. Private
+HEAD/index/config remain unchanged; no private commit/push or Codex adapter
+deployment occurred.
+
+**3D PASS.** After the initial external credits/limit blocker, the user explicitly
+authorized a session-only alternate model. A real `--model sonnet` session
+successfully invoked all six skills from the deployed user skill directories and
+confirmed the shared rules; it made no non-Skill tool calls. The original model
+preference and complete settings remain byte-identical to the legacy baseline.
+The existing statusLine command passed startup and active-context runtime tests
+using actual user widget configuration. Final production status/diff and source,
+target, HEAD/index/config invariants passed. See the
+[3D validation matrix](phase-3-validation.md) for evidence and limitations.
+
+The deployment and rollback package were retained at 3D. The preferred model's
+service limit was not changed or repaired. Subsequent 3E–3G authorization is
+recorded above; 3H was subsequently authorized and completed as recorded above.
+
+Local owner-private evidence and rollback instructions are retained at
+`/Users/Shared/ai-agent-migration-<user>/phase3-20260922-221058/` (`ROLLBACK.md`,
+`baseline/`, and `review/phase3-result.json`). Do not copy their contents into this
+public repository. Detailed baseline identity and commands are in that package.
+
+## Historical gate: public Phase 2.7 only
 
 The user classified the production layout mismatch as **Phase 2.7 Production
 Layout Compatibility**, authorizing changes and isolated validation in this public
@@ -67,14 +125,14 @@ This supersedes the earlier blanket migration pause, but not the phase gates bel
 
 | Phase | Work | Required evidence / gate | Current status |
 | --- | --- | --- | --- |
-| 3A | Establish a reversible private baseline and rollback plan | Verified private source identity and Git state; scoped source/deployed backup manifest with existence, types, modes and hashes; preserve pre-existing edits; verify backup restoration in isolation | Incomplete; production preflight stopped; await 2.7 acceptance and explicit continuation |
-| 3B | Migrate inventory mapping into Shared Core | Preserve existing user-rule meaning; retain Claude-only settings; move existing portable skills to their shared authority; avoid duplicate plain/template targets | Not started |
-| 3C | Switch Claude to Shared Core + v2 dotfiles-sync | Deploy only reviewed Claude/shared outputs; preserve settings; replace legacy callers safely without fallback or automatic session-start writes; no Codex deployment | Not started |
-| 3D | Claude regression gate | Verify CLAUDE.md, every pre-existing skill, sync entrypoint and scanner scope; isolated sync tests; scoped chezmoi behavior/idempotence; settings preservation; rollback evidence; report actual product-loading checks separately from rendering | **Mandatory stop; not run** |
-| 3E | Deploy Codex adapter | Separate explicit authorization after 3D | Not authorized |
-| 3F | Validate Codex | Verify actual instruction/skill loading and intended configuration behavior | Not authorized |
-| 3G | Validate Claude/Codex cross-agent sync | Shared authority, compatible mappings and concurrent sync behavior | Not authorized |
-| 3H | Final private dotfiles commit + push | Separate explicit authorization after prior gates | Not authorized |
+| 3A | Establish a reversible private baseline and rollback plan | Verified private source identity and Git state; scoped source/deployed backup manifest with existence, types, modes and hashes; preserve pre-existing edits; verify backup restoration in isolation | PASS; external package and actual-content isolated rollback verified |
+| 3B | Migrate inventory mapping into Shared Core | Preserve existing user-rule meaning; retain Claude-only settings; move existing portable skills to their shared authority; avoid duplicate plain/template targets | Applied; approved source manifest verified |
+| 3C | Switch Claude to Shared Core + v2 dotfiles-sync | Deploy only reviewed Claude/shared outputs; preserve settings; replace legacy callers safely without fallback or automatic session-start writes; no Codex deployment | Applied; 14 targets verified; production scoped checks passed |
+| 3D | Claude regression gate | Verify CLAUDE.md, every pre-existing skill, sync entrypoint and scanner scope; isolated sync tests; scoped chezmoi behavior/idempotence; settings preservation; rollback evidence; report actual product-loading checks separately from rendering | **PASS / mandatory stop**; actual runtime with authorized session-only Sonnet; original settings preserved |
+| 3E | Deploy Codex adapter | Separate explicit authorization after 3D | Authorized and applied; 8 source / 7 target additions; rollback verified |
+| 3F | Validate Codex | Verify actual instruction/skill loading and intended configuration behavior | **PASS**; actual runtime evidence retained; targeted config restoration and final checks passed |
+| 3G | Validate Claude/Codex cross-agent sync | Shared authority, compatible mappings and concurrent sync behavior | **PASS**; shared authority/no drift verified after restoration; stop before 3H |
+| 3H | Final private dotfiles commit + push | Separate explicit authorization after prior gates | **PASS / COMPLETE**; scanned, committed, pushed, remote equality and clean tree verified |
 
 A baseline reference/backup under 3A must not be mistaken for authorization to
 create the final migration commit or publish private changes under 3H. Do not

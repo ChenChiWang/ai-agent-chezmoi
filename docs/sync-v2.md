@@ -6,6 +6,21 @@ legacy script, or session-start trigger. This engine replaces the legacy sync
 operations **for an already migrated v2 profile**; it does not automatically ingest
 arbitrary legacy settings, hooks, skills, or other dotfiles.
 
+## Phase 4B review extension (not deployed)
+
+The public working tree additionally supports `codex` (28 sources / 12 targets)
+and explicit `--repository-profile claude-codex` for full-repo history/source scans
+with a single-agent target profile. Existing two-profile defaults remain compatible.
+The accepted Phase 4 model uses session-length generation cohorts. Enrolled v2
+in/push can prepare externally while readers exist, then returns
+`DEFERRED_READERS`, exit 75 and `applied=false`; only proven quiescence permits
+activation. The enrolled engine shares a kernel mutex with bootstrap and updates
+its receipt in the source/target transaction. A completed enrollment retains a
+legacy lock barrier against older writers. This protocol is not deployed: real
+native family retirement remains blocked, while enrollment interruption consistency
+has been repaired and tested. See [current repair review](phase-4-blocker-repair.md). Do not deploy it over the accepted Phase 3
+private source without separately approved upgrade and qualification.
+
 ## Design and scope
 
 The POSIX `sync.sh` entrypoint retains the offline status implementation and
@@ -233,3 +248,59 @@ Write tests create real commits and push **only to disposable local bare fixture
 They never use a personal home, private chezmoi source, SSH login or external remote.
 macOS and local file transport are tested. Linux, Git Bash/WSL, real SSH/HTTPS,
 product loading and migration/legacy caller cutover remain separate acceptance gates.
+
+
+## Agent-driven memory checkpoints (2026-09-25)
+
+This is the current daily-sync requirement, replacing the goal of automatic
+pre-CLI launch family tracking. It uses the existing Shared Core instructions and
+single [dotfiles-sync skill](../examples/chezmoi/.chezmoitemplates/ai/shared/skills/dotfiles-sync/SKILL.md).
+Bootstrap/installation is separate. No new launcher, guardian, hooks, process tracker,
+service or installer is required. Historical loading research/tests remain; their
+mixed-revision gate is still BLOCKED, not repaired or waived by this workflow.
+Existing reader barriers/locks remain binding; known concurrent configuration use
+requires deferring application. Unmanaged concurrent sessions are not automatically
+detected, and no cross-session live-reload guarantee is made.
+
+Phase 3 capability check used the deployed skill read-only, the public engine/adapter
+code and the retained Phase 3H validation record; it did not rerun private production
+validation. Phase 3 already has shared instruction/skill rendering, offline status,
+quarantined incoming plans, approved in/push, scanner, writer lock, drift/history
+checks, scoped publication and rollback. The missing capability was the agent's
+three-checkpoint instruction policy. Public instructions prohibited session-start
+sync and the skill referred to the experimental launch controller; those directives
+are replaced. The engine and historical loading implementation are unchanged.
+
+| Checkpoint / condition | Required agent behavior | Verification boundary |
+| --- | --- | --- |
+| First turn, before substantive work | Proactively invoke skill; resolve reviewed roots/profile; local status, then permitted remote in plan; review and apply within authorization; re-read changed rules/skills | Isolated scripted incoming + two-agent render/readback; not proof that every model automatically invokes the skill |
+| No updates | Remote plan unchanged plus local state consistent: begin work without execution/empty commit | Existing no-change test; local status alone cannot establish remote freshness |
+| Confirmed important memory | Authorized edit to existing authoritative global source or project documentation as appropriate; distinguish recorded from applied/published | Scripted source-only edit remains absent from deployed targets until approved sync |
+| Task completion / explicit end | Check local edits and pending outbound commits; reviewed push only when authorized; otherwise report pending | Scripted publication/readback and no-op finish; forced exit is not covered |
+| Offline / unreachable remote | Report freshness unknown, defer sync and use existing memory for unrelated work | Existing network-failure test proves no mutation; reporting wording is instruction review |
+| Conflict / staged changes / drift | Preserve state, defer writes; no reset/stash or automatic conflict resolution | Existing real-engine refusal tests |
+| Missing approval | Produce reviewable plan if allowed; mark pending, do not execute | Missing --approve rejected in fixture; human authorization remains an agent obligation |
+| Missing scanner / invalid report | Block; no installation or passing substitute | Existing scanner failure and real pinned scanner tests |
+| Existing barrier/journal / known concurrent use | Defer application; never remove the barrier | Existing engine lock tests; known unmanaged concurrency is a policy obligation, not automatic family detection |
+| Successful sync | Re-read changed source and deployed rules/skills; verify status; identify restart-needed or unverified native reload | Scripted readback/render consistency, not runtime hot reload |
+
+Approval compatibility: v2 already allows existing explicit task authorization OR
+approval of a concrete reviewed plan. It does not require a fresh question for each
+unchanged, already-authorized operation. However PLAN_ID is only a content identity;
+the engine cannot verify human consent. Automatic checkpoints do not confer arbitrary
+write/push consent, broaden mapping or reuse the completed Phase 3 publication approval.
+If authorization does not cover the actual roots/profile/remote/branch/changes, the
+agent must stop the write at pending approval. Plan changes require fresh review,
+with another question only when existing authorization no longer covers the action.
+There is no newly invented standing-policy format or approval bypass.
+
+Report recorded locally / applied locally / synchronized remotely / pending approval /
+blocked distinctly. Push failure can leave a local commit; an uncertain remote outcome
+is unconfirmed, not synchronized. A clean worktree can still have unpublished commits.
+Project-only memory outside the mapping is not publishable through v2. Never save raw
+chat, credentials, session state or project trust as shared memory.
+
+Validation results for this change are recorded in implementation-status. This is a
+public instruction/skill change only; production has not received these triggers.
+Model-driven automatic invocation is a behavioral requirement, not a deterministic
+process hook; no new Claude/Codex model runtime qualification is claimed here.
