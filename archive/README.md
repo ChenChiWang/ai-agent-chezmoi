@@ -9,11 +9,10 @@ Everything under `archive/` was moved out of the active tree on 2026-09-26 by th
   Known unresolved defects are listed in the plan's appendix. **Do not install
   these launchers, shims or PATH blocks on any machine.**
 - `tests/`: the tests for that implementation. They are not part of the default
-  test run. They still execute from this location
-  (`python3 archive/tests/test-bootstrap.py`); the three `test-native-*.py`
-  scripts require explicitly supplied vendor binaries.
+  test run and only pass against the `engine-with-cohort-hooks` tag; the three
+  `test-native-*.py` scripts additionally require explicitly supplied vendor binaries.
 
-The v2 engine keeps inert cohort/lease hooks (`ai-agent-cohort.json`,
-`ai-agent-launch-readers`) that only activate when a bootstrap enrollment exists.
-No active machine has such an enrollment. Records of this research live in
-[`docs/history/`](../docs/history/phase-4-roadmap.md).
+The v2 engine no longer contains the cohort/lease hooks these tests depend on; it
+refuses their markers instead. To run the archived tests, check out the tag
+`engine-with-cohort-hooks` (the last engine revision with the hooks). Records of
+this research live in [`docs/history/`](../docs/history/phase-4-roadmap.md).

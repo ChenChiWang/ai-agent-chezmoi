@@ -147,7 +147,9 @@ checkpoint 草稿），以「以本地為準」的 merge 收入，其 `agent-dri
 `test_existing_coordination_metadata_refused` 採納：引擎與 shell status 對封存的 cohort／lease 標記一律
 回 `BLOCKED_UNSUPPORTED_COORDINATION`（73）。引擎內剩餘的 cohort 程式碼已不可達，建議下一輪移除。
 
-尚未執行：真實 Claude／Codex session 的主動觸發驗收；引擎 cohort 程式碼移除。
+**cohort 移除（2026-09-26）**：引擎移除全部 cohort／lease／DEFERRED_READERS 與 launcher 專用 timeout 後門，`lock()` 回到單一 mkdir 鎖；最後含 hooks 的版本以 tag `engine-with-cohort-hooks` 標記供封存測試使用。
+
+尚未執行：真實 Claude／Codex session 的主動觸發驗收。
 
 ## 6. 附錄：本次複查的程式碼問題
 

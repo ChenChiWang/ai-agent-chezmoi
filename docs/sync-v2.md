@@ -6,20 +6,14 @@ legacy script, or session-start trigger. This engine replaces the legacy sync
 operations **for an already migrated v2 profile**; it does not automatically ingest
 arbitrary legacy settings, hooks, skills, or other dotfiles.
 
-## Phase 4B review extension (not deployed)
+## Profiles
 
-The public working tree additionally supports `codex` (28 sources / 12 targets)
-and explicit `--repository-profile claude-codex` for full-repo history/source scans
-with a single-agent target profile. Existing two-profile defaults remain compatible.
-The accepted Phase 4 model uses session-length generation cohorts. Enrolled v2
-in/push can prepare externally while readers exist, then returns
-`DEFERRED_READERS`, exit 75 and `applied=false`; only proven quiescence permits
-activation. The enrolled engine shares a kernel mutex with bootstrap and updates
-its receipt in the source/target transaction. A completed enrollment retains a
-legacy lock barrier against older writers. This protocol is not deployed: real
-native family retirement remains blocked, while enrollment interruption consistency
-has been repaired and tested. See [current repair review](history/phase-4-blocker-repair.md). Do not deploy it over the accepted Phase 3
-private source without separately approved upgrade and qualification.
+The engine supports `claude` (31 sources / 14 targets), `codex` (28 / 12) and
+`claude-codex` (39 / 21), plus `--repository-profile claude-codex` for full-repo
+history/source scans with a single-agent target profile. The Phase 4 cohort/lease
+protocol (`DEFERRED_READERS`, receipts, kernel mutex) was removed from the engine on
+2026-09-26; its markers are refused (see below) and its records live in
+[history](history/phase-4-blocker-repair.md).
 
 ## Design and scope
 
@@ -86,8 +80,8 @@ Any `ai-agent-cohort.json`, `ai-agent-cohort.lock` or `ai-agent-launch-readers`
 entry under the source `.git` belongs to the archived Phase 4 bootstrap protocol.
 Every command, including `status` and `check`, refuses with
 `BLOCKED_UNSUPPORTED_COORDINATION` (exit 73) before taking any lock and leaves the
-entry untouched for manual inspection. The engine's remaining cohort/lease code is
-therefore unreachable and scheduled for removal.
+entry untouched for manual inspection. The engine contains no cohort/lease code any
+more; the last revision with those hooks is tagged `engine-with-cohort-hooks`.
 
 ### Roles and automatic incoming
 
@@ -333,8 +327,8 @@ single [dotfiles-sync skill](../examples/chezmoi/.chezmoitemplates/ai/shared/ski
 Bootstrap/installation is separate. No new launcher, guardian, hooks, process tracker,
 service or installer is required. Historical loading research/tests remain; their
 mixed-revision gate is still BLOCKED, not repaired or waived by this workflow.
-Existing reader barriers/locks remain binding; known concurrent configuration use
-requires deferring application. Unmanaged concurrent sessions are not automatically
+The writer lock and recovery journal remain binding; known concurrent configuration
+use requires deferring application. Unmanaged concurrent sessions are not automatically
 detected, and no cross-session live-reload guarantee is made.
 
 Phase 3 capability check used the deployed skill read-only, the public engine/adapter

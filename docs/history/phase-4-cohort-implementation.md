@@ -120,7 +120,7 @@ empty-machine orchestration or statusLine portability is claimed.
 
 ## Overall review of the current worktree
 
-Review used the local [review skill](~/.agents/skills/review/SKILL.md).
+Review used the local review skill (`~/.agents/skills/review/SKILL.md`).
 No agent delegation was used.
 
 1. **Critical — native family retirement is unqualified.** Both normal minimal

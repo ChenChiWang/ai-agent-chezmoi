@@ -2,7 +2,6 @@
 """Approved fixed-profile sync transactions. No third-party Python dependencies."""
 import argparse
 import contextlib
-import fcntl
 import hashlib
 import importlib.util
 import json
@@ -52,7 +51,7 @@ class Diagnostics:
         'validate_plan': 'preflight', 'initialize_engine': 'prepare',
         'build_candidate': 'prepare', 'source_lock': 'coordination',
         'validate_execution': 'preflight', 'write_plan': 'prepare',
-        'prepare_bundle': 'prepare', 'activate': 'transaction',
+        'activate': 'transaction',
         'transfer_objects': 'transfer', 'create_journal': 'transaction',
         'index_lock': 'transaction', 'backup_files': 'transaction',
         'write_manifest': 'transaction', 'apply_files': 'transaction',
@@ -279,18 +278,10 @@ class Engine:
             need(not (self.gd / name).exists(), 'BLOCKED_CONFLICT', 66)
         self.remote = '' if self.offline else self.remote_url(args.remote)
 
-    def remaining(self, timeout):
-        deadline = getattr(self.a, 'prepare_deadline', None)
-        if deadline is not None:
-            left = deadline - time.monotonic()
-            need(left > 0, 'PREPARATION_TIMEOUT', 71)
-            return min(timeout, left)
-        return timeout
-
     def call(self, cmd, data=None, env=None, code=70, label='GIT_ERROR'):
         try:
             p = subprocess.run(cmd, input=data, env=env or self.env, cwd=self.tmp,
-                               capture_output=True, timeout=self.remaining(getattr(self.a, 'network_timeout', 120) if code == 71 else 120))
+                               capture_output=True, timeout=120)
         except subprocess.TimeoutExpired:
             raise Block(71, 'PREPARATION_TIMEOUT') from None
         except FileNotFoundError:
@@ -379,7 +370,7 @@ class Engine:
             report = root / 'report.json'
             try:
                 run = subprocess.run([str(self.scanner), str(root / 'snapshot'), str(report)],
-                                     cwd=self.tmp, env=self.env, capture_output=True, timeout=self.remaining(getattr(self.a, 'scan_timeout', 120)))
+                                     cwd=self.tmp, env=self.env, capture_output=True, timeout=120)
                 findings = api.validate_report(api.read_json(report), run.returncode)
             except (api.ScanError, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
                 raise Block(70, 'SCANNER_ERROR') from None
@@ -479,11 +470,6 @@ class Engine:
                     config=summary({'config': read(self.gd / 'config')}),
                     source=summary(snapshot(self.src, self.files)),
                     target=summary(snapshot(self.dst, self.targets)))
-        enrolled = cohort_receipt(self.src, self.dst, allow_pending=True)
-        if enrolled:
-            receipt_path, _ = enrolled
-            result['cohort'] = dict(marker=digest(read(self.gd / 'ai-agent-cohort.json')[0]),
-                                    receipt=summary({'receipt': read(receipt_path)}) if receipt_path.exists() else None)
         return result
 
     def clean_index(self):
@@ -579,12 +565,6 @@ class Engine:
     def transact(self, new_head, changes, new_index):
         diagnostics.mark('create_journal')
         need(self.state() == self.before, 'BLOCKED_STALE_PLAN', 68)
-        enrolled = cohort_receipt(self.src, self.dst)
-        if enrolled:
-            receipt_path, receipt = enrolled
-            need(receipt['profile'] == self.profile, 'PROFILE_SWITCH_REQUIRES_BOOTSTRAP')
-            updated = dict(receipt, head=new_head, targets=summary(self.rendered))
-            changes = list(changes) + [(receipt_path, (encoded(updated), 0o600))]
         journal = self.gd / 'ai-agent-sync-transaction'
         journal.mkdir(mode=0o700)
         diagnostics.transaction_started = True
@@ -670,38 +650,10 @@ class Engine:
             with diagnostics.cleaning('remove_journal'):
                 shutil.rmtree(journal)
 
-    def prepare_bundle(self, root, plan_id):
-        """Persist only validated immutable candidates, external to source/HOME."""
-        safe(root)
-        need(root.is_absolute() and external(root, self.src, self.dst), 'EXTERNAL_PREPARED_STATE_REQUIRED')
-        root.mkdir(mode=0o700, exist_ok=True)
-        info = root.stat()
-        need(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700, 'INVALID_PREPARED_STATE')
-        values = dict(self.candidate)
-        values.update({'target/' + p: v for p, v in self.rendered.items()})
-        doc = dict(schema=1, plan_id=plan_id, profile=self.profile, base=self.before,
-                   candidate_head=self.remote_head, files=summary(values))
-        blobs = {digest(value[0]): value[0] for value in values.values()}
-        need({p.name for p in root.iterdir()} <= set(blobs) | {'manifest.json'}, 'INVALID_PREPARED_STATE')
-        for name, data in blobs.items():
-            path = root / name
-            if path.exists():
-                need(read(path) == (data, 0o600) and path.stat().st_nlink == 1, 'PREPARED_DRIFT')
-            else:
-                atomic(path, (data, 0o600))
-        manifest = root / 'manifest.json'
-        if manifest.exists():
-            need(read(manifest) == (encoded(doc), 0o600), 'PREPARED_DRIFT')
-        else:
-            atomic(manifest, (encoded(doc), 0o600))
-        return digest(encoded(doc))
-
     def execute(self):
         diagnostics.transaction_started = False
         diagnostics.rollback = dict(attempted=False, result='not_attempted')
         diagnostics.mark('activate')
-        cohort_receipt(self.src, self.dst)  # Incomplete enrollment cannot activate, even on a no-op.
-        need(not active_readers(self.src), 'DEFERRED_READERS', 75)
         if self.a.operation == 'in':
             changes = [(self.dst / p, v) for p, v in self.rendered.items()]
             if self.remote_head != self.head:
@@ -897,158 +849,18 @@ def check(args):
     return 0
 
 
-def active_readers(source):
-    readers = source / '.git/ai-agent-launch-readers'
-    safe(readers)
-    return readers.exists() and any(readers.iterdir())
-
-
-def cohort_metadata(source):
-    """Validate the physical barrier, without declaring deployment ready."""
-    marker = source / '.git/ai-agent-cohort.json'
-    safe(marker)
-    if not marker.exists():
-        return None
-    data, mode = read(marker)
-    doc = json.loads(data)
-    need(type(doc) is dict and mode == 0o600 and doc.get('schema') == 1
-         and type(doc.get('destination')) is str and type(doc.get('state')) is str, 'INVALID_COHORT_METADATA')
-    destination, state = Path(doc['destination']), Path(doc['state'])
-    safe(state)
-    need(destination.is_absolute() and state.is_absolute()
-         and not any(api.overlaps(state.resolve(), p) for p in (source, destination)),
-         'INVALID_COHORT_METADATA')
-    info = state.stat()
-    need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
-         and stat.S_IMODE(info.st_mode) == 0o700, 'INVALID_COHORT_METADATA')
-    need(read(source / '.git/ai-agent-sync.lock/owner.json') ==
-         (encoded(dict(protocol='cohort-v1')), 0o600), 'INVALID_COHORT_BARRIER')
-    mutex = source / '.git/ai-agent-cohort.lock'
-    safe(mutex)
-    info = mutex.stat()
-    need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid == os.getuid()
-         and stat.S_IMODE(info.st_mode) == 0o600, 'INVALID_COHORT_MUTEX')
-    return doc
-
-
-def cohort_receipt(source, destination, allow_pending=False):
-    doc = cohort_metadata(source)
-    if doc is None:
-        return None
-    need(doc['destination'] == str(destination), 'INVALID_COHORT_METADATA')
-    state = Path(doc['state'])
-    journal = state / 'journal.json'
-    safe(journal)
-    need(allow_pending or not journal.exists(), 'RECOVERY_REQUIRED', 72)
-    path = state / 'receipt.json'
-    safe(path)
-    if not path.exists():
-        need(allow_pending, 'ENROLLMENT_INCOMPLETE', 72)
-        return path, None
-    value, mode = read(path)
-    receipt = json.loads(value)
-    need(type(receipt) is dict, 'INVALID_COHORT_RECEIPT')
-    need(mode == 0o600 and path.stat().st_nlink == 1 and receipt.get('source') == str(source)
-         and receipt.get('destination') == str(destination), 'INVALID_COHORT_RECEIPT')
-    return path, receipt
-
-
-def cohort_mutex(source, create=False):
-    mutex = source / '.git/ai-agent-cohort.lock'
-    safe(mutex)
-    flags = os.O_RDWR | os.O_NOFOLLOW
-    if create and not mutex.exists():
-        flags |= os.O_CREAT | os.O_EXCL
-    fd = os.open(mutex, flags, 0o600)
-    try:
-        info = os.fstat(fd)
-        need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid == os.getuid()
-             and stat.S_IMODE(info.st_mode) == 0o600, 'INVALID_COHORT_MUTEX')
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise Block(73, 'BLOCKED_LOCK') from None
-        return fd
-    except BaseException:
-        os.close(fd)
-        raise
-
-
-def sync_cohort(source):
-    """Persist the validated barrier again on recovery/rerun, under its lock."""
-    need(cohort_metadata(source) is not None, 'ENROLLMENT_INCOMPLETE', 72)
-    for relative in ('ai-agent-cohort.lock', 'ai-agent-sync.lock/owner.json', 'ai-agent-cohort.json'):
-        fd = os.open(source / '.git' / relative, os.O_RDONLY | os.O_NOFOLLOW)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-    fsync_dir(source / '.git/ai-agent-sync.lock')
-    fsync_dir(source / '.git')
-
 
 @contextlib.contextmanager
-def enroll_cohort(source, destination, state):
-    """Hold BOTH protocols through initial handoff and receipt publication.
-
-    Bootstrap's durable journal exists before entry. No stable mutex inode is
-    replaced. Existing enrollment is revalidated, never silently reconstructed.
-    """
-    marker = source / '.git/ai-agent-cohort.json'
-    value = dict(schema=1, destination=str(destination), state=str(state))
-    if marker.exists():
-        need(cohort_metadata(source) == value, 'COHORT_ENROLLMENT_MISMATCH')
-        sync_cohort(source)
-        yield
-        return
-    legacy = source / '.git/ai-agent-sync.lock'
-    need(legacy.is_dir(), 'ENROLLMENT_LOCK_REQUIRED')
-    fd = cohort_mutex(source, create=True)
-    try:
-        os.fsync(fd)
-        fsync_dir(source / '.git')
-        atomic(legacy / 'owner.json', (encoded(dict(protocol='cohort-v1')), 0o600))
-        atomic(marker, (encoded(value), 0o600))
-        need(cohort_metadata(source) == value, 'COHORT_ENROLLMENT_MISMATCH')
-        sync_cohort(source)
-        yield
-    finally:
-        os.close(fd)
-
-
-@contextlib.contextmanager
-def lock(source, allow_readers=False, allow_pending=False):
+def lock(source):
+    """One atomic mkdir lock per source; a leftover directory is never removed automatically."""
     diagnostics.mark('source_lock')
     path = source / '.git/ai-agent-sync.lock'
     safe(path)
-    marker = source / '.git/ai-agent-cohort.json'
-    safe(marker)
-    # A handoff interrupted before marker publication retains the old barrier.
-    # Only approved bootstrap recovery may use its already-published kernel lock.
-    owner = read(path / 'owner.json', missing=True) if path.exists() else None
-    handing_off = owner == (encoded(dict(protocol='cohort-v1')), 0o600)
-    if marker.exists() or handing_off:
-        doc = cohort_metadata(source) if marker.exists() else None
-        need(doc is not None or allow_pending, 'ENROLLMENT_INCOMPLETE', 72)
-        fd = cohort_mutex(source)
-        try:
-            if not allow_pending:
-                cohort_receipt(source, Path(doc['destination']))
-            need(allow_readers or not active_readers(source), 'BLOCKED_ACTIVE_LAUNCH', 73)
-            yield
-        except BaseException as error:
-            diagnostics.capture(error)
-            raise
-        finally:
-            with diagnostics.cleaning('release_lock'):
-                os.close(fd)
-        return
     try:
         path.mkdir(mode=0o700)
     except FileExistsError:
         raise Block(73, 'BLOCKED_LOCK') from None
     try:
-        need(allow_readers or not active_readers(source), 'BLOCKED_ACTIVE_LAUNCH', 73)
         atomic(path / 'owner.json', (encoded(dict(pid=os.getpid(), started=int(time.time()))), 0o600))
         yield
     except BaseException as error:
@@ -1056,9 +868,7 @@ def lock(source, allow_readers=False, allow_pending=False):
         raise
     finally:
         with diagnostics.cleaning('release_lock'):
-            owner = read(path / 'owner.json', missing=True)
-            if not marker.exists() and owner != (encoded(dict(protocol='cohort-v1')), 0o600):
-                shutil.rmtree(path)
+            shutil.rmtree(path)
 
 
 def main():
@@ -1109,7 +919,7 @@ def main():
     try:
         engine = Engine(args, Path(temporary.name))
         result = engine.build()
-        with lock(Path(args.source).resolve(), allow_readers=True):
+        with lock(Path(args.source).resolve()):
             diagnostics.mark('validate_execution')
             need(engine.state() == engine.before, 'BLOCKED_STALE_PLAN', 68)
             if args.command == 'plan':
@@ -1146,11 +956,6 @@ def main():
                         raise Block(77, 'PENDING_APPROVAL: plan changes files outside shared text; '
                                         'review and rerun with --approve PLAN_ID')
                     print('AUTO_IN: shared text only; applied under the local auto_in policy')
-                if active_readers(engine.src):
-                    diagnostics.mark('prepare_bundle')
-                    bundle = engine.prepare_bundle(plan_path.parent / ('prepared-' + args.approve), args.approve)
-                    print('DEFERRED_READERS; applied=false; PREPARED_ID: ' + bundle)
-                    return 75
                 engine.execute()
     except BaseException as error:
         diagnostics.capture(error)

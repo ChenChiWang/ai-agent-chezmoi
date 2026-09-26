@@ -48,10 +48,10 @@ All profiles use the same shared skill sources. For a full dual repository deplo
 to a single-agent machine, also specify `--repository-profile claude-codex`; this
 scans the entire source/history without reading or deploying inactive targets. Never create Codex files to satisfy a Claude-only
 status check. The compatibility default is dual, so always supply the chosen profile.
-Any existing reader lease, unresolved barrier, writer lock or recovery journal remains
-binding. Never remove protection to make this workflow run. Known concurrent
-configuration use requires deferring application even if no reader lease exists;
-this skill does not detect all native/IDE sessions or fix the historical loading gate.
+Any existing writer lock, recovery journal or archived coordination marker
+(`BLOCKED_UNSUPPORTED_COORDINATION`) remains binding. Never remove protection to make
+this workflow run. Known concurrent configuration use requires deferring application;
+this skill does not detect all native/IDE sessions.
 
 ## Three memory checkpoints
 
