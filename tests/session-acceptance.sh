@@ -23,20 +23,29 @@ esac
 python3 - "$agent" "$work/events.jsonl" <<'PY'
 import json, sys
 agent, path = sys.argv[1], sys.argv[2]
-calls = []
+calls, outputs, ids = [], {}, []
 for line in open(path):
     try: ev = json.loads(line)
     except Exception: continue
     if agent == 'claude' and ev.get('type') == 'assistant':
         for b in ev['message'].get('content', []):
             if b.get('type') == 'tool_use':
-                i = b['input']; calls.append((b['name'], str(i.get('command') or i.get('skill') or i.get('file_path') or i.get('pattern') or '')))
+                i = b['input']; calls.append((b['name'], str(i.get('command') or i.get('skill') or i.get('file_path') or i.get('pattern') or ''))); ids.append(b.get('id'))
+    elif agent == 'claude' and ev.get('type') == 'user':
+        for b in ev['message'].get('content', []):
+            if isinstance(b, dict) and b.get('type') == 'tool_result':
+                c = b.get('content'); outputs[b.get('tool_use_id')] = c if isinstance(c, str) else ' '.join(x.get('text', '') for x in c if isinstance(x, dict))
     elif agent == 'codex' and ev.get('type') == 'item.completed':
         item = ev.get('item') or {}
         if item.get('type') == 'command_execution':
-            calls.append(('Bash', str(item.get('command'))))
-for n, (name, desc) in enumerate(calls, 1):
+            calls.append(('Bash', str(item.get('command')))); ids.append(len(ids)); outputs[ids[-1]] = str(item.get('aggregated_output', ''))
+for n, ((name, desc), tid) in enumerate(zip(calls, ids), 1):
     print('%2d %-6s %s' % (n, name, desc[:140]))
+    if 'sync.sh' in desc:
+        # 同步命令的輸出只印狀態行，方便判讀 CHECKED_TODAY / CHECK_SKIPPED / UP_TO_DATE。
+        for l in str(outputs.get(tid, '')).splitlines():
+            if l[:1].isupper() and ':' in l and not l.startswith('DIAGNOSTIC'):
+                print('        ' + l[:120])
 def is_sync(d): return 'sync.sh' in d
 first_project_read = next((i for i, (_, d) in enumerate(calls) if not is_sync(d)), len(calls))
 ran_status = any('sync.sh' in d and ' status' in d for _, d in calls[:first_project_read])
