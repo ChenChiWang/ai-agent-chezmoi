@@ -12,8 +12,11 @@ Use the single engine at `${AI_AGENT_HOME:-$HOME/.config/ai-agent}/bin/sync.sh`.
 Read the machine-local parameter file `${AI_AGENT_HOME:-$HOME/.config/ai-agent}/sync.local.json`
 and pass it with `--config`. It supplies `source`, `destination`, `profile`,
 `repository_profile`, `remote`, `branch`, `plan_dir`, `scanner`, `author_name`,
-`author_email`, `writer` and `auto_in`. Explicit options override it. If the file is
-missing or lacks an essential value, ask the user for exactly that value; never guess
+`author_email`, `writer` and `auto_in`. Explicit options override it. If neither the
+file nor the deployed engine exists, this machine is not brought up on v2: skip the
+checkpoints without reporting an error, and start a bring-up only when the user asks.
+If the engine is deployed but the file is missing, or the file lacks an essential
+value, ask the user for exactly that value; never guess
 roots and never treat the current project as the dotfiles repository. During ordinary
 work never create the file yourself; the one exception is a bring-up run under the
 public `setup/AGENT-SETUP.md`, where you write it with values the user confirmed.
@@ -61,7 +64,8 @@ this skill does not detect all native/IDE sessions.
 
 **Start:** On the first turn of a new work session, before substantive work, invoke
 this skill without waiting for a reminder. Short read-only tasks are not exempt, but
-the daily `CHECKED_TODAY` result keeps the cost to one offline `status`. Read the parameter file; ask only for
+the daily `CHECKED_TODAY` result keeps the cost to one offline `status`. On a machine
+that is not brought up (see Parameters), stop here silently. Read the parameter file; ask only for
 missing essentials rather than guessing roots or silently treating the project as
 the source. Run local
 `status`. It is offline and only describes scoped local state: `NO_CHANGES` does not
