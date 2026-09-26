@@ -193,6 +193,14 @@ sh ~/.config/ai-agent/bin/sync.sh check  --config ~/.config/ai-agent/sync.local.
 Expected: `NO_CHANGES` and `UP_TO_DATE`. Anything else: see the result table in
 `docs/new-machine.md`.
 
+After the user first starts and logs in to the agent on this machine, run `status`
+again. The first launch can write onboarding choices (such as `"theme"`) into the
+synced `~/.claude/settings.json`, which shows as `TARGET: .claude/settings.json changed`
+and `DRIFT`. Show the user the difference (`chezmoi cat ~/.claude/settings.json | diff -u
+- ~/.claude/settings.json`) and **ASK THE USER** whether to share it with every machine
+(copy the HOME file into the source's `dot_claude/settings.json`, then a reviewed push
+plan) or discard it (`chezmoi apply ~/.claude/settings.json`). Never decide this yourself.
+
 ## Step 8: acceptance (optional, billed)
 
 From this public repository, `sh tests/session-acceptance.sh claude` and
