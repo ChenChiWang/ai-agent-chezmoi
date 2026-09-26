@@ -19,10 +19,15 @@ Current state only. Older round-by-round records are archived in
   test-offline-status 6, test-scanner 10 (real Gitleaks 8.30.1), test-render.sh and
   test-status.sh PASS.
 
-## Not done here
+## Deployment (2026-09-26, this machine)
 
-- No private source upgrade, HOME deployment, commit to the private repository or
-  push. The deployed engine on this machine is still the Phase 3 build.
+- Private source updated and published through a reviewed push plan; HOME targets
+  verified against the plan; deployed engine equals public `25c0792`.
+- Engine fixes found during deployment: scp-style remote normalization, default SSH
+  identity files, message/identity taken from the plan on in/push (the last one is
+  not yet deployed to HOME).
+
+## Not done here
 - No model runtime session was run; proactive skill invocation remains a behavioral
   acceptance that only real sessions can show.
 - Codex 0.157.0 skill discovery was checked by binary inspection only.

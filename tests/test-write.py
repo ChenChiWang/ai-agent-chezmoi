@@ -681,6 +681,17 @@ sys.exit(10 if secret else 0)
             with self.assertRaises(module.Block):
                 engine.remote_url(bad)
 
+    def test_message_and_identity_taken_from_plan(self):
+        config = self.write_config()
+        self.edit()
+        output = self.raw(['plan', '--operation', 'push', '--config', config, '--message', 'feat: fixture message'])
+        plan_id = [l for l in output.splitlines() if l.startswith('PLAN_ID: ')][0][len('PLAN_ID: '):]
+        # 不重複帶 --message 也能執行；帶了不同訊息才算不同 plan。
+        self.raw(['push', '--config', config, '--approve', plan_id, '--message', 'other'], expected=68)
+        self.raw(['push', '--config', config, '--approve', plan_id])
+        self.assertEqual(self.git(self.src, 'log', '-1', '--format=%s'), 'feat: fixture message')
+        self.assertEqual(self.git(self.src, 'log', '-1', '--format=%an'), 'Fixture')
+
     def test_writer_role(self):
         config = self.write_config(writer='claude')
         self.assertIn('NOT_WRITER', self.raw(['in', '--config', config, '--agent', 'codex', '--approve', '0' * 64], expected=77))

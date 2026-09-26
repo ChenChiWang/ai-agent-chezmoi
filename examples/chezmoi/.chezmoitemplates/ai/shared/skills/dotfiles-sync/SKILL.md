@@ -143,7 +143,11 @@ Review the actual edits at those hashes and every listed outbound commit. Hashes
 alone do not explain the change.
 
 Use existing explicit task authorization or obtain approval for the concrete plan
-before executing `in` or `push`, with the same options and `--approve PLAN_ID`.
+before executing `in` or `push`, with the same roots/profile/remote/branch options
+and `--approve PLAN_ID`. The commit message and author identity are taken from the
+approved plan when not repeated; giving a different message is a different plan.
+Do not run `git status` or other index-refreshing commands against the source
+between `plan` and `in`/`push`: the plan binds the index hash.
 The flag is not evidence of human consent. Proactive checkpoints authorize neither
 arbitrary writes nor publication: existing explicit authorization must cover the
 operation, roots, profile, remote/branch and actual changes/outbound commits. Record

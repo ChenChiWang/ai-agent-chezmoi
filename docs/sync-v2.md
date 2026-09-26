@@ -74,7 +74,11 @@ plan must be outside the source checkout and outside the `.claude`, `.codex`,
 HOME are allowed.
 
 Malformed plan documents return `INVALID_PLAN` (exit 65) with a redacted
-`DIAGNOSTIC` record instead of a traceback.
+`DIAGNOSTIC` record instead of a traceback. On `in`/`push`, an omitted `--message`
+or author identity is taken from the approved plan, so the same plan can be executed
+without repeating them; a different explicit message is a different plan
+(`BLOCKED_STALE_PLAN`). The plan also binds the source index hash: an intervening
+`git status` on the source refreshes the index and invalidates the plan.
 
 ### Roles and automatic incoming
 

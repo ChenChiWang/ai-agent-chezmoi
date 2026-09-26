@@ -817,7 +817,7 @@ def arguments():
     p.add_argument('--baseline')
     p.add_argument('--baseline-id')
     p.add_argument('--approve')
-    p.add_argument('--message', default='chore: sync shared agent configuration')
+    p.add_argument('--message')
     p.add_argument('--author-name', default='')
     p.add_argument('--author-email', default='')
     a = p.parse_args()
@@ -826,6 +826,8 @@ def arguments():
     a.operation = a.operation if a.command == 'plan' else a.command
     values = configure(a)
     a.profile = a.profile or 'claude-codex'
+    a.message_given = a.message is not None
+    a.message = a.message if a.message is not None else 'chore: sync shared agent configuration'
     need(a.source and a.destination and a.branch, 'USAGE: explicit source, destination and branch required', 64)
     need(not a.offline or (a.operation == 'in' and not a.remote), 'USAGE: offline is local in only', 64)
     need(a.offline or a.remote, 'USAGE: remote required', 64)
@@ -1084,6 +1086,16 @@ def main():
         need(digest(approved) == args.approve, 'BLOCKED_STALE_PLAN', 68)
         document = json.loads(approved)
         need(type(document) is dict and type(document.get('plan')) is dict, 'INVALID_PLAN')
+        # 未明確給定的訊息與作者身分取自已核准的 plan，避免同一 plan 因預設訊息不同而被判過期。
+        recorded = document['plan']
+        if not args.message_given and type(recorded.get('message')) is str:
+            args.message = recorded['message']
+        identity = recorded.get('identity')
+        if (not args.author_name and not args.author_email and type(identity) is list and len(identity) == 2
+                and all(type(v) is str for v in identity)):
+            args.author_name, args.author_email = identity
+        for value in (args.message, args.author_name, args.author_email):
+            need(len(value) <= 4096 and not any(ord(c) < 32 for c in value), 'INVALID_PLAN')
         need(type(document.get('created')) is int and 0 <= time.time() - document['created'] < 3600,
              'BLOCKED_EXPIRED_PLAN', 68)
     temporary = tempfile.TemporaryDirectory(prefix='ai-agent-write-', dir='/tmp')

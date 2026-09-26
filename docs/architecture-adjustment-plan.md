@@ -134,7 +134,14 @@
 | G | 現行契約只留 sync-v2、secret-scanner、production-layout、本計畫與精簡後的 implementation-status；其餘移入 `docs/history/`；Codex 0.157.0 以二進位字串確認 skill 路徑 | 未做真實 Codex runtime 重驗 |
 | H | B/D2/D3 與 C/D1/E 因同時完成而合併為引擎、skill 兩個 commit | 批次數少於計畫 |
 
-尚未執行：部署到私有 source 與 HOME（需另行 reviewed push）；真實 Claude／Codex session 的主動觸發驗收。
+**部署（2026-09-26，本機）**：私有 source 的 8 個對應檔案更新並以 reviewed push 發布（私有 commit
+`026e9848`），HOME 21 個 target 與 plan 一致，部署引擎等於公開 `25c0792`。`sync.local.json` 已建
+（writer=claude，auto_in=false）。過程中發現並修正兩個引擎阻礙：scp 型式 remote 未被接受、SSH 只信任
+agent 而 agent 無金鑰（改為允許預設金鑰檔）。另一個 agent 陷阱：`push` 未重複帶 `--message` 會被判過期，
+已改為從 plan 取用（此修正尚未部署到 HOME）。私有 repo 留有一個 stash（9/25 驗證殘留）待處理。
+公開 repo 的 `docs/history/` 與 `archive/` 含本機路徑與私有 repo 名稱，公開 push 前應清理。
+
+尚未執行：真實 Claude／Codex session 的主動觸發驗收；公開 repo push。
 
 ## 6. 附錄：本次複查的程式碼問題
 
