@@ -1,6 +1,6 @@
 # Phase 4A — Bootstrap & Multi-machine 設計
 
-> Current requirement (2026-09-25): [agent-driven memory checkpoints](sync-v2.md#agent-driven-memory-checkpoints-2026-09-25)
+> Current requirement (2026-09-25): [agent-driven memory checkpoints](../sync-v2.md#agent-driven-memory-checkpoints-2026-09-25)
 > replace the goal of pre-CLI automatic family tracking. Bootstrap is separate from
 > daily sync. The material below is retained historical research/status, not current
 > authorization to continue guardian/retirement work. Existing barriers/tests remain;

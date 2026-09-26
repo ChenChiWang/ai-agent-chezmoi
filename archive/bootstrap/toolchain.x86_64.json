@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "platform": "darwin-x86_64",
+  "qualification": "implementation under isolated qualification; Apple CLT/Python is an explicit OS prerequisite",
+  "tools": {
+    "git": {
+      "kind": "build-git",
+      "version": "2.55.0",
+      "url": "https://www.kernel.org/pub/software/scm/git/git-2.55.0.tar.gz",
+      "sha256": "0842dc384a23ac33ba3e570c4f3a8ded85963ee4713b1cd21153c3db41813d1e",
+      "top": "git-2.55.0"
+    },
+    "python": {
+      "kind": "prerequisite",
+      "version": "3.9"
+    },
+    "claude": {
+      "kind": "raw",
+      "version": "2.1.278",
+      "url": "https://downloads.claude.ai/claude-code-releases/2.1.278/darwin-x64/claude",
+      "sha256": "c522425e3d42275d2ac2238757ef8ba7f80d165a934044ec5a7a5fd7d7b9950b"
+    },
+    "node": {
+      "kind": "tree",
+      "version": "22.22.0",
+      "url": "https://nodejs.org/dist/v22.22.0/node-v22.22.0-darwin-x64.tar.gz",
+      "sha256": "5ea50c9d6dea3dfa3abb66b2656f7a4e1c8cef23432b558d45fb538c7b5dedce",
+      "top": "node-v22.22.0-darwin-x64"
+    },
+    "gitleaks": {
+      "kind": "archive",
+      "version": "8.30.1",
+      "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_x64.tar.gz",
+      "sha256": "dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709",
+      "member": "gitleaks"
+    },
+    "chezmoi": {
+      "kind": "archive",
+      "version": "2.71.0",
+      "url": "https://github.com/twpayne/chezmoi/releases/download/v2.71.0/chezmoi_2.71.0_darwin_amd64.tar.gz",
+      "sha256": "12b78b365528597ad701f5117fa71f6c42b5b1e65d8075e19c48472ad81faf30",
+      "member": "chezmoi"
+    },
+    "codex": {
+      "kind": "archive",
+      "version": "0.155.1",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.155.1/codex-x86_64-apple-darwin.tar.gz",
+      "sha256": "ff22ad0bf28b8568dbfb28ef0ea64451fe5170fa0f9118bf764ca6cb24c27791",
+      "member": "codex-x86_64-apple-darwin"
+    }
+  }
+}

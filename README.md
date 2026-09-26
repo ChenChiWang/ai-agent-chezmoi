@@ -34,16 +34,14 @@ Phase 2.7 supports source under destination HOME, including
 `$HOME/.local/share/chezmoi`, with bounded managed paths and reserved deployment
 regions. See [production layout compatibility](./docs/production-layout.md).
 
-Phase 4A [bootstrap and multi-machine design](./docs/phase-4-bootstrap-design.md)
-has been accepted. The [Phase 4B isolated implementation](./bootstrap/README.md)
-and [current cohort repair review](./docs/phase-4-blocker-repair.md)
-are available; enrollment consistency is repaired and native family retirement
-remains **BLOCKED**. The current daily-sync requirement is
+The current daily-sync requirement is
 [agent-driven memory checkpoints](./docs/sync-v2.md#agent-driven-memory-checkpoints-2026-09-25):
 start of work, confirmed durable memory, and end of work, using the common skill and
-existing v2 approval/safety checks. It replaces further pre-CLI family-tracking work;
-bootstrap stays separate. These public instruction changes are not production deployment.
-See the [roadmap](./docs/phase-4-roadmap.md).
+existing v2 approval/safety checks. The 2026-09-26 review and the
+[architecture adjustment plan](./docs/architecture-adjustment-plan.md) define the
+next changes. The Phase 4 bootstrap/launcher/guardian research is **archived and not
+maintained**: see [`archive/`](./archive/README.md) and
+[`docs/history/`](./docs/history/phase-4-roadmap.md). Do not install anything from it.
 
 The remaining instructions describe **legacy v1**. Its `status` changes source
 and index, prints diff before scanning, and its `push` does not enforce scanning.

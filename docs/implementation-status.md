@@ -90,7 +90,7 @@
   and deployed-file/actual reread evidence. Fixed incoming run is finished and stopped;
   no additional prompts to turn partial results into PASS. Outgoing remains unauthorized.
 - No production/private deployment, public/private commit/push, bootstrap or 4H.
-- [Fixed scenarios, prepared fixture content and separate acceptance matrix](agent-driven-runtime-validation.md).
+- [Fixed scenarios, prepared fixture content and separate acceptance matrix](history/agent-driven-runtime-validation.md).
 
 ## Previous — agent-driven runtime smoke completed with limitations (2026-09-25)
 
@@ -255,7 +255,7 @@
 - No reliable small fix established within the current unprivileged mechanism. A richer kernel
   event backend is conditional on additional approval, permissions and completeness qualification;
   no tracking implementation, dependencies or services added.
-- [Evidence, conditional scope/permissions, acceptance matrix and uncovered entrypoints](phase-4-blocker-repair.md).
+- [Evidence, conditional scope/permissions, acceptance matrix and uncovered entrypoints](history/phase-4-blocker-repair.md).
   Stop for implementation review. No production/private changes, commit/push or 4H.
 
 ## Previous — two-blocker repair within the accepted cohort model (2026-09-24)
@@ -273,7 +273,7 @@
 - Administrative/inactive shim calls may skip refresh but still require complete
   configuration and successful reader protection. Raw CLI/IDE/chezmoi/editor paths
   outside the shim/protocol are explicitly outside the guarantee.
-- [Root causes, minimal four-file change, tests and coverage](phase-4-blocker-repair.md).
+- [Root causes, minimal four-file change, tests and coverage](history/phase-4-blocker-repair.md).
   No production/private edits, commit/push or 4H. Stop after this review.
 
 The following entries are historical; the latest scope/status above supersedes them.
@@ -290,7 +290,7 @@ new safety/native-qualification stop condition; **4B–4G is not PASS**.
 
 No production/private edits, public/private commit/push, or 4H. StatusLine and full
 fresh-machine/upgrade validation remain incomplete. See the authoritative current
-[implementation evidence, review findings and continuation](phase-4-cohort-implementation.md).
+[implementation evidence, review findings and continuation](history/phase-4-cohort-implementation.md).
 The sections below are historical; their pending-design/short-lease scope is superseded.
 
 ## Historical generation-cohort design — isolated validation PASS (subsequently accepted)
@@ -308,7 +308,7 @@ The sections below are historical; their pending-design/short-lease scope is sup
 - Native snapshot routing is no longer required. Production guardian/family-lifetime
   qualification and real v2 transaction integration are not implemented by this
   design-only round. No production/private changes, commit/push or 4H.
-- [Design, evidence, limitations and review outcome](phase-4-generation-cohorts.md).
+- [Design, evidence, limitations and review outcome](history/phase-4-generation-cohorts.md).
 
 ## Phase 4 loading redesign — native race confirmed (2026-09-24)
 
@@ -323,7 +323,7 @@ The sections below are historical; their pending-design/short-lease scope is sup
 - Existing launcher CLI transport checks: 3 targeted tests PASS. This is not native
   snapshot-launcher qualification. Remaining 4B–4G work is conditional on this gate
   and was not advanced. Production/private untouched, no commit/push or 4H.
-- [Design, native evidence, scope and gate matrix](phase-4-consistent-loading.md).
+- [Design, native evidence, scope and gate matrix](history/phase-4-consistent-loading.md).
 
 ## Phase 4B–4G follow-up — stopped at loading safety finding (2026-09-24)
 
@@ -336,7 +336,7 @@ The sections below are historical; their pending-design/short-lease scope is sup
   does not establish all skill loading is finished. Stopped under the user's
   safety/regression condition; no unsafe release or forced hooks were added.
 - Three blockers and full 4B–4G overall validation remain incomplete. No production
-  changes, private changes, commit/push or 4H. [Evidence and remaining work](phase-4-loading-safety.md).
+  changes, private changes, commit/push or 4H. [Evidence and remaining work](history/phase-4-loading-safety.md).
 
 ## Previous Phase 4B — isolated implementation, acceptance blocked (2026-09-24)
 
@@ -353,15 +353,15 @@ The sections below are historical; their pending-design/short-lease scope is sup
   writes during that session; short loading-complete integration remains unresolved.
   Git/Python/Claude/Node remain explicit prerequisites; complete empty-Mac setup,
   PATH/minimum-OS/toolchain qualification and Claude statusLine support remain gates.
-- [Review findings and evidence](phase-4b-validation.md),
-  [implementation interfaces](../bootstrap/README.md). Stop for review.
+- [Review findings and evidence](history/phase-4b-validation.md),
+  [implementation interfaces](../archive/bootstrap/README.md). Stop for review.
 
 
 ## Historical Phase 4A — accepted design
 
 - Scope is public documentation only; Phase 3 remains COMPLETE. No production
   private change, tool installation/removal, bootstrap execution or commit/push.
-- [Design](phase-4-bootstrap-design.md) defines new-macOS tool/profile plans,
+- [Design](history/phase-4-bootstrap-design.md) defines new-macOS tool/profile plans,
   three profiles (`claude`, `codex`, `claude-codex`), independent agent/tool/auth
   readiness, bounded deployment, runtime-state exclusion, idempotent reruns,
   explicit upgrade/profile switching/reactivation and guarded recovery.
@@ -374,7 +374,7 @@ The sections below are historical; their pending-design/short-lease scope is sup
   Design now specifies standing-policy plan/in, offline/dirty/drift/lock/dependency
   outcomes, agent independence, and pending reader-barrier/timeout qualification.
   No production mutation or launch-sync execution occurred.
-- [Proposed 4B–4H roadmap](phase-4-roadmap.md) requires later authorization. No
+- [Proposed 4B–4H roadmap](history/phase-4-roadmap.md) requires later authorization. No
   fixture or real-machine bootstrap PASS is claimed. Stop for 4A review.
 
 ## Phase 3 COMPLETE — 3H publication (2026-09-23)

@@ -18,7 +18,7 @@ activation. The enrolled engine shares a kernel mutex with bootstrap and updates
 its receipt in the source/target transaction. A completed enrollment retains a
 legacy lock barrier against older writers. This protocol is not deployed: real
 native family retirement remains blocked, while enrollment interruption consistency
-has been repaired and tested. See [current repair review](phase-4-blocker-repair.md). Do not deploy it over the accepted Phase 3
+has been repaired and tested. See [current repair review](history/phase-4-blocker-repair.md). Do not deploy it over the accepted Phase 3
 private source without separately approved upgrade and qualification.
 
 ## Design and scope

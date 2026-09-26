@@ -53,7 +53,7 @@ private dotfiles, authentication or existing rollback packages were modified.
   Successful acquisition is tested with a substituted disposable transport, not
   access to the private production origin.
 
-Usage, controls and limitations: [bootstrap README](../bootstrap/README.md).
+Usage, controls and limitations: [bootstrap README](../../archive/bootstrap/README.md).
 
 ## Test evidence
 
