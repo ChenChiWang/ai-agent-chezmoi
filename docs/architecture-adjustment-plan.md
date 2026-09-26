@@ -154,7 +154,12 @@ README 摘要非「實質工作」而跳過）；指示改為無條件、列出�
 先 `status` 再 `check`（真實 fetch，UP_TO_DATE，寫入當日快取），再讀專案檔，7 turns。發現指示中的
 `${AI_AGENT_HOME:-…}` 寫法會被權限分類器擋下，已改為字面 `~/` 路徑。Codex session 未測。
 
-尚未執行：Codex 真實 session 驗收；互動模式下建議在 settings.json 加 `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)` 允許清單以免每次提示。
+**Codex 真實 session 驗收（2026-09-26，`codex exec`，預設 workspace-write sandbox，同一普通任務）**：
+無快取時先 `check`（sandbox 無網路，`NETWORK_ERROR` 71）再 `status`（NO_CHANGES），明確回報「更新檢查失敗、
+用現有設定繼續」後才讀專案檔，PASS；有當日快取時 `check` 回 `CHECKED_TODAY`，不碰網路，PASS。兩次都未嘗試
+跳出 sandbox。注意 `codex exec` 在非 TTY 下會等 stdin，測試需 `< /dev/null`。
+
+尚未執行：互動模式下建議在 settings.json 加 `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)` 允許清單以免每次提示。
 
 ## 6. 附錄：本次複查的程式碼問題
 
