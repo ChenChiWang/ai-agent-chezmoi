@@ -48,8 +48,8 @@ conversion；紀錄見 [docs/history](./docs/history/migration-readiness.md)。
   需要核准一次工作區外的寫入。不要為了同步放寬 sandbox；讓 Claude 當 writer，或自己跑 `push`。
 - **Plan 綁定 source 的 index。** `plan` 與 `in`／`push` 之間不要對 source 跑 `git status` 之類的命令，
   `--message` 也要相同，否則會 `BLOCKED_STALE_PLAN` 要重建。
-- **每天第一個 session** 在互動模式的 Claude Code 可能會跳 `sync.sh` 的權限提示；不想每次確認就在 settings
-  允許 `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)`。
+- **權限提示。** 互動模式的 Claude Code 執行 `sync.sh` 前會先問，除非 `settings.json` 的 `permissions.allow`
+  含 `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)`；範例 settings 已包含這條。
 
 Phase 2.7 支援 source 位於 destination HOME 下（例如 `$HOME/.local/share/chezmoi`），
 並保留明確 managed paths 與部署區域隔離。詳見

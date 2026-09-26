@@ -75,9 +75,9 @@ you write yourself (agents are told never to create it). It is never synchronize
 - **Plans bind the source index.** Do not run `git status` or similar on the source
   between `plan` and `in`/`push`, and keep the same `--message`; otherwise the plan
   returns `BLOCKED_STALE_PLAN` and you rebuild it.
-- **First session of the day** may prompt for the `sync.sh` command in interactive
-  Claude Code; allow `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)` in your settings
-  if you do not want that prompt.
+- **Permission prompt.** Interactive Claude Code asks before running the `sync.sh`
+  command unless `permissions.allow` in `settings.json` contains
+  `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)`; the example settings include it.
 
 Phase 2.7 supports source under destination HOME, including
 `$HOME/.local/share/chezmoi`, with bounded managed paths and reserved deployment

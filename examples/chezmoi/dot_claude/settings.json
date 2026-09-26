@@ -1,1 +1,7 @@
-{}
+{
+  "permissions": {
+    "allow": [
+      "Bash(sh ~/.config/ai-agent/bin/sync.sh:*)"
+    ]
+  }
+}

@@ -4,5 +4,10 @@
     "command": "npx -y ccstatusline@latest",
     "padding": 0
   },
-  "tui": "fullscreen"
+  "tui": "fullscreen",
+  "permissions": {
+    "allow": [
+      "Bash(sh ~/.config/ai-agent/bin/sync.sh:*)"
+    ]
+  }
 }
