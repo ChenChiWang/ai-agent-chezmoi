@@ -34,6 +34,7 @@ Report the lines. Continue with the `FAIL` items only.
 
 | FAIL line | You do |
 | --- | --- |
+| `platform` | stop the bring-up and install nothing: native Windows (Git Bash, MSYS2, Cygwin) cannot run the engine. Tell the user it has to be done inside WSL, with Claude Code and Codex installed there, and ask whether to continue that way |
 | `git` | propose `brew install git` (macOS) or the distribution package; run after confirmation |
 | `chezmoi` | propose `brew install chezmoi` or the official install script into `~/.local/bin`; run after confirmation |
 | `python3` | propose the platform's Python 3.9+ package; run after confirmation |
