@@ -59,6 +59,27 @@ sh ~/.config/ai-agent/bin/sync.sh check  --config ~/.config/ai-agent/sync.local.
 
 預期 `NO_CHANGES` 與 `UP_TO_DATE`。其他結果見第 7 節。
 
+**第一次啟動 Claude Code 之後再跑一次 `status`。** 新機器第一次啟動並登入時，引導畫面會把
+選好的設定（例如 `"theme"`）寫進同步中的 `~/.claude/settings.json`，有時還會重排欄位，於是
+`status` 回報 `TARGET: .claude/settings.json changed` 與 `DRIFT`。先比對差異：
+
+```sh
+chezmoi cat ~/.claude/settings.json | diff -u - ~/.claude/settings.json
+```
+
+再決定怎麼處理：
+
+- **所有機器共用**：把 HOME 的檔案原樣複製回 source，產生出來的內容就會跟 HOME 逐字相同，
+  不會覆寫任何東西。然後照一般發布流程建 push plan、審閱、核准。其他機器下次開工會收到
+  `BEHIND`，而 settings 的變更一律要人工核准才會套用。
+
+  ```sh
+  cp ~/.claude/settings.json "$(chezmoi source-path)/dot_claude/settings.json"
+  ```
+
+- **捨棄**：`chezmoi apply ~/.claude/settings.json` 還原成 source 的版本。Claude Code 之後
+  可能會再問一次。
+
 ## 5. 開工檢查驗收
 
 從公開 repo 的 clone 執行 `sh tests/session-acceptance.sh claude` 與
@@ -86,7 +107,7 @@ sandbox 內會看到 `CHECK_SKIPPED`；同一天已有人檢查過則兩邊都�
 | `INVALID_CONFIG`（78） | 參數檔欄位、路徑或權限不合 | 檢查 README 的欄位說明；權限 600 |
 | `INVALID_LAYOUT`（65） | source／destination 路徑或 managed 檔案缺失 | 確認 `chezmoi apply` 已完成、路徑是絕對路徑 |
 | `BLOCKED_OVERRIDE`（65） | `~/.codex/AGENTS.override.md` 存在 | 人工檢視後移除或改名 |
-| `DRIFT`（2） | 部署檔與 source 渲染不一致（有人手動改了 target） | 把意圖改回 source，或 `chezmoi apply` 還原 |
+| `DRIFT`（2） | 部署檔與 source 渲染不一致（有人手動改了 target） | 把意圖改回 source，或 `chezmoi apply` 還原；新機器第一次啟動 Claude Code 後出現的見第 4 節 |
 | `NETWORK_ERROR`（71） | 連不到 remote | 檢查 SSH 金鑰、known_hosts、網路 |
 | `CHECK_SKIPPED`（0） | sandbox 內無網路（Codex） | 正常；由 writer 端探測 |
 | `BLOCKED_STALE_PLAN`（68） | plan 建立後狀態變了（含 `--message` 不同、對 source 跑過 `git status`） | 重建 plan |
