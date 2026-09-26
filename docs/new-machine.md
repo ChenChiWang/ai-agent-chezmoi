@@ -3,20 +3,25 @@
 > 對象：要在第二台電腦啟用 v2 同步的人，以及被指派協助上線的 agent。
 > 假設私有 dotfiles repo 已完成 Phase 3 遷移，且第一台機器已在使用 v2。
 
-## 1. 前置工具（引擎會逐項檢查，版本不對會直接拒絕）
+> 想讓 agent 代勞：告訴它「clone 公開 repo，照 `setup/AGENT-SETUP.md` 上線」。那份手冊把每一步
+> 分成「agent 做」與「問使用者」，只有把公鑰貼到 GitHub、決定覆寫既有設定、決定 `writer` 與
+> `auto_in`、核准 push 這幾件事需要人。
 
-| 工具 | 要求 | 引擎回報 |
+## 1. 前置工具
+
+先跑唯讀自檢，它會逐項標 OK／WARN／FAIL 並附下一步：
+
+```sh
+sh setup/preflight.sh
+```
+
+| 工具 | 要求 | 補救 |
 | --- | --- | --- |
-| Git | 2.45 以上，支援 `--no-lazy-fetch` | `MISSING_DEPENDENCY`（69） |
-| chezmoi | 2.71 系列已測 | 首次部署用；引擎 `status` 也會呼叫 |
-| Python | 3.9 以上 | `MISSING_DEPENDENCY`（69） |
-| Gitleaks | **必須是 8.30.1**，其他版本一律拒絕 | `MISSING_DEPENDENCY`（69） |
-| SSH | 金鑰能存取私有 repo，`github.com` 已在 `~/.ssh/known_hosts` | `NETWORK_ERROR`（71） |
-| Claude Code／Codex | 已安裝並登入 | 不在引擎檢查範圍 |
-
-Gitleaks 請從官方 GitHub release 取 8.30.1（套件管理員常給新版）。SSH 請先手動
-`ssh -T git@github.com` 一次，讓 known_hosts 有紀錄；引擎不讀 `~/.ssh/config`、
-不會互動提示，金鑰要在 ssh-agent 或是預設檔名 `~/.ssh/id_*`。
+| Git | 2.45 以上，支援 `--no-lazy-fetch` | 套件管理員安裝 |
+| chezmoi | 2.71 系列已測 | 套件管理員安裝 |
+| Python | 3.9 以上 | 套件管理員安裝 |
+| Gitleaks | **必須是 8.30.1** | `sh setup/install-gitleaks.sh`（釘版本、核對官方 SHA-256、裝到 `~/.local/bin`） |
+| SSH | 金鑰能存取私有 repo，host 已在 known_hosts | 手冊第 3 步 |
 
 ## 2. 首次部署用 chezmoi，不用引擎
 
@@ -28,19 +33,18 @@ chezmoi diff        # 先看會覆寫什麼，特別是既有的 ~/.claude/setti
 chezmoi apply
 ```
 
-那台機器若已有自己的 Claude 設定，先決定要保留還是接受 source 版本；若有
-`~/.codex/AGENTS.override.md`，先處理掉，否則引擎會回 `BLOCKED_OVERRIDE`。
+## 3. 參數檔與部署後自檢
 
-## 3. 建立本機參數檔
+寫 `~/.config/ai-agent/sync.local.json`（權限 600，欄位見 README「設定注意事項」），建
+`~/.local/state/ai-agent/plans`（700）。然後：
 
 ```sh
-mkdir -p -m 700 ~/.local/state/ai-agent/plans
+sh ~/.config/ai-agent/bin/sync.sh doctor --config ~/.config/ai-agent/sync.local.json
 ```
 
-寫 `~/.config/ai-agent/sync.local.json`（權限 600），欄位與範例見 README 的
-「設定注意事項」。`source`／`destination` 用那台的實際絕對路徑；`writer` 與
-`auto_in` 依那台的習慣決定；沒裝 Claude 的機器用 `"profile": "codex"` 與
-`"writer": "codex"`。這個檔案不會被同步，agent 也不得代建。
+`doctor` 是唯讀的：檢查工具版本、參數檔、plan_dir、source 的 39 個 mapped 檔、21 個 target、
+known_hosts 與 SSH 連線、agent 二進位、settings 的允許規則、部署引擎是否與執行中的相同。
+沒有 FAIL 再進下一節。
 
 ## 4. 引擎自檢
 
@@ -89,17 +93,9 @@ sandbox 內會看到 `CHECK_SKIPPED`；同一天已有人檢查過則兩邊都�
 
 ## 8. 給 agent 的自主流程
 
-agent 可以自己做的：第 1 節的版本檢查（讀取版本輸出）、第 4 節的引擎自檢、
-第 5 節的觀察、第 7 節的對照與回報。
+完整流程在 `setup/AGENT-SETUP.md`。agent 自己做：preflight、依 FAIL 項提出安裝命令並在
+確認後執行、Gitleaks 釘版本安裝、known_hosts 指紋核對、`chezmoi init`／`diff` 與 diff 摘要、
+參數檔內容推導、`doctor`、`status`／`check`、驗收。
 
-必須由人做或決定的：安裝或更換系統工具、放置 SSH 金鑰與首次 `ssh -T`、
-`chezmoi apply` 前對既有設定的取捨、參數檔的內容（尤其 `writer` 與 `auto_in`）、
-任何 `push` 的核准。agent 遇到這些應明確列出缺項並停下，不得自行補建參數檔、
-放寬 sandbox 或清除 lock。
-
-### 規劃中：`sync.sh doctor`
-
-目前第 1、3、4 節要人或 agent 分別跑多個命令比對。規劃一個唯讀的 `doctor`
-子命令，一次輸出檢查清單（工具版本、參數檔、plan_dir、source 佈局、target 存在、
-SSH 與 known_hosts、agent 二進位、settings 允許規則），每項標 OK／FAIL 與下一步。
-agent 在新機器上只需跑 `doctor`，照輸出逐項回報缺什麼；全部 OK 後再跑第 4 節。
+需要人：把公鑰貼到 Git 託管帳號、決定是否覆寫既有設定、決定 `writer` 與 `auto_in`、核准
+任何 push。agent 不得用 sudo、不得放寬 sandbox、不得清除 lock。

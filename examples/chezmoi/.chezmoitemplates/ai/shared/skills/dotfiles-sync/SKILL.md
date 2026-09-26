@@ -14,8 +14,11 @@ and pass it with `--config`. It supplies `source`, `destination`, `profile`,
 `repository_profile`, `remote`, `branch`, `plan_dir`, `scanner`, `author_name`,
 `author_email`, `writer` and `auto_in`. Explicit options override it. If the file is
 missing or lacks an essential value, ask the user for exactly that value; never guess
-roots, never treat the current project as the dotfiles repository, and never create
-the file yourself. The file is machine-local, outside synchronization, and provides
+roots and never treat the current project as the dotfiles repository. During ordinary
+work never create the file yourself; the one exception is a bring-up run under the
+public `setup/AGENT-SETUP.md`, where you write it with values the user confirmed.
+`doctor --config FILE` is the read-only self-check after deployment. The file is
+machine-local, outside synchronization, and provides
 identity only: it is not authorization to apply or publish. `plan_dir` must be outside
 the source checkout and outside `.claude`, `.codex`, `.agents` and `.config/ai-agent`;
 `$HOME/.local/state/ai-agent/plans` is a suitable location. With `plan_dir`, `plan`

@@ -30,7 +30,9 @@ conversion；紀錄見 [docs/history](./docs/history/migration-readiness.md)。
 
 ### 設定注意事項（啟用 agent 主動同步前先讀）
 
-第二台機器上線、端到端驗收與結果對照表見 [`docs/new-machine.md`](./docs/new-machine.md)。
+第二台機器上線、端到端驗收與結果對照表見 [`docs/new-machine.md`](./docs/new-machine.md)。要讓 agent 代勞，
+指給它 [`setup/AGENT-SETUP.md`](./setup/AGENT-SETUP.md)；它會用 `setup/preflight.sh`、`setup/install-gitleaks.sh`
+與引擎的 `doctor`。
 
 每台機器要有一份你自己寫的參數檔 `~/.config/ai-agent/sync.local.json`（agent 被要求絕不自行建立），
 它不會被同步。欄位範例見英文 README。

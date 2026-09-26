@@ -111,6 +111,16 @@ installed 0.157.0 binary still references both `.agents/skills` and
 a runtime session); the mapping is therefore unchanged, and a fresh runtime
 confirmation remains a manual acceptance step.
 
+### doctor
+
+`doctor [--config FILE]` is read-only and prints one `OK` / `WARN` / `FAIL` line per
+check: Git with `--no-lazy-fetch`, chezmoi, Python, the pinned Gitleaks, the
+parameter file, `plan_dir`, mapped source files, deployed targets, leftover locks or
+journals, whether the deployed engine matches the running one, the Claude settings
+allow rule, `known_hosts` and an SSH probe for `ssh://` remotes, and the agent
+binaries for the profile. It exits 1 when any check fails. `setup/preflight.sh` is
+the pre-deployment counterpart that needs no engine.
+
 ### check
 
 `check` fetches the branch into quarantine and prints `HEAD`, `REMOTE_HEAD` and

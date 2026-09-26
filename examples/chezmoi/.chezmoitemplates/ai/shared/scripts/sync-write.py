@@ -760,7 +760,7 @@ def resolve_plan(a, values):
 
 def arguments():
     p = Parser(add_help=True)
-    p.add_argument('command', choices=('plan', 'in', 'push', 'check'))
+    p.add_argument('command', choices=('plan', 'in', 'push', 'check', 'doctor'))
     p.add_argument('--operation', choices=('in', 'push'))
     for arg in ('source', 'destination', 'branch', 'plan', 'remote', 'scanner', 'config'):
         p.add_argument('--' + arg)
@@ -781,6 +781,9 @@ def arguments():
     a.operation = a.operation if a.command == 'plan' else a.command
     values = configure(a)
     a.profile = a.profile or 'claude-codex'
+    if a.command == 'doctor':
+        a.config_values = values
+        return a
     a.message_given = a.message is not None
     a.message = a.message if a.message is not None else 'chore: sync shared agent configuration'
     need(a.source and a.destination and a.branch, 'USAGE: explicit source, destination and branch required', 64)
@@ -810,6 +813,109 @@ def arguments():
     for value in (a.source, a.destination, a.plan, a.scanner or '/', a.baseline or '/'):
         need(Path(value).is_absolute(), 'USAGE: absolute paths required', 64)
     return a
+
+
+def doctor(args):
+    """Read-only bring-up checks after deployment. Prints OK/WARN/FAIL lines; exit 1 on any FAIL."""
+    counts = dict(OK=0, WARN=0, FAIL=0)
+
+    def report(status, item, detail, fix=''):
+        counts[status] += 1
+        print('%-4s %s: %s%s' % (status, item, detail, (' -> ' + fix) if fix else ''))
+
+    def run(cmd, timeout=15):
+        try:
+            p = subprocess.run(cmd, capture_output=True, timeout=timeout)
+            return p.returncode, p.stdout.decode(errors='replace'), p.stderr.decode(errors='replace')
+        except (OSError, subprocess.SubprocessError):
+            return None, '', ''
+
+    rc, out, _ = run(['git', '--version'])
+    version = re.search(r'(\d+\.\d+(?:\.\d+)?)', out or '')
+    if rc == 0 and version and run(['git', '--no-lazy-fetch', '--version'])[0] == 0:
+        report('OK', 'git', version.group(1) + ' with --no-lazy-fetch')
+    else:
+        report('FAIL', 'git', 'missing or without --no-lazy-fetch', 'install Git 2.45 or newer')
+    rc, out, _ = run(['chezmoi', '--version'])
+    report('OK', 'chezmoi', out.strip().split(',')[0]) if rc == 0 else report('FAIL', 'chezmoi', 'not found', 'install chezmoi')
+    report('OK' if sys.version_info >= (3, 9) else 'FAIL', 'python3', '%d.%d.%d' % sys.version_info[:3], '' if sys.version_info >= (3, 9) else 'install Python 3.9 or newer')
+    binary = shutil.which('gitleaks')
+    rc, out, _ = run([binary, 'version']) if binary else (None, '', '')
+    if rc == 0 and out.strip() == api.VERSION:
+        report('OK', 'gitleaks', api.VERSION + ' at ' + binary)
+    else:
+        report('FAIL', 'gitleaks', ('version ' + out.strip()) if rc == 0 else 'not found', 'run: sh setup/install-gitleaks.sh from the public repo')
+    values = args.config_values
+    if not args.config:
+        report('WARN', 'config', 'no --config given; source, targets, remote and roles not checked', 'rerun with --config ~/.config/ai-agent/sync.local.json')
+    else:
+        report('OK', 'config', 'valid; writer=%s auto_in=%s profile=%s' % (values.get('writer', 'any'), values.get('auto_in', False), args.profile))
+        if 'plan_dir' in values:
+            plan_dir = Path(values['plan_dir'])
+            if plan_dir.is_dir() and os.access(plan_dir, os.W_OK):
+                mode = stat.S_IMODE(plan_dir.stat().st_mode)
+                report('OK' if mode == 0o700 else 'WARN', 'plan_dir', str(plan_dir) + (' mode %o' % mode), '' if mode == 0o700 else 'chmod 700 ' + str(plan_dir))
+            else:
+                report('FAIL', 'plan_dir', str(plan_dir) + ' missing or not writable', 'mkdir -p -m 700 ' + str(plan_dir))
+        else:
+            report('WARN', 'plan_dir', 'not configured', 'add plan_dir to the parameter file')
+    if args.source and args.destination:
+        src, dst = Path(args.source), Path(args.destination)
+        try:
+            api.validate_layout(src, dst, args.profile, source_profile=args.repository_profile)
+            files, targets = api.mapping(args.repository_profile or args.profile)
+            missing = [p for p in files if not (src / p).is_file()]
+            report('OK' if not missing else 'FAIL', 'source', '%s, %d/%d mapped files present' % (src, len(files) - len(missing), len(files)), '' if not missing else 'the private source is missing mapped files; check its layout')
+            missing = [p for p in api.mapping(args.profile)[1] if not (dst / p).is_file()]
+            report('OK' if not missing else 'FAIL', 'targets', '%d/%d deployed under %s' % (len(api.mapping(args.profile)[1]) - len(missing), len(api.mapping(args.profile)[1]), dst), '' if not missing else 'chezmoi apply (first deployment) or an approved in')
+        except (ValueError, OSError):
+            report('FAIL', 'layout', 'source/destination layout invalid', 'check absolute paths, symlinks and that the source is a regular Git checkout')
+        for name, label in (('ai-agent-sync.lock', 'writer lock'), ('ai-agent-sync-transaction', 'recovery journal'), ('index.lock', 'git index lock')):
+            if (src / '.git' / name).exists():
+                report('WARN', 'source_state', label + ' present', 'inspect before any write; never delete blindly')
+        engine = dst / '.config/ai-agent/bin/sync-write.py'
+        if engine.is_file():
+            same = digest(engine.read_bytes()) == digest(Path(__file__).read_bytes())
+            report('OK' if same else 'WARN', 'engine', 'deployed engine ' + ('matches this build' if same else 'differs from the engine running doctor'), '' if same else 'run doctor through the deployed ~/.config/ai-agent/bin/sync.sh')
+        if 'claude' in (('claude', 'codex') if args.profile == 'claude-codex' else (args.profile,)):
+            settings = dst / '.claude/settings.json'
+            try:
+                allow = json.loads(settings.read_text()).get('permissions', {}).get('allow', [])
+                rule = 'Bash(sh ~/.config/ai-agent/bin/sync.sh:*)'
+                report('OK' if rule in allow else 'WARN', 'settings', 'sync command ' + ('pre-allowed' if rule in allow else 'not in permissions.allow'), '' if rule in allow else 'add ' + rule + ' to permissions.allow to avoid a prompt per session')
+            except (OSError, ValueError, AttributeError):
+                report('WARN', 'settings', str(settings) + ' unreadable or not JSON', 'check the deployed Claude settings')
+    if args.remote:
+        value = args.remote
+        if value.startswith('/'):
+            report('OK', 'remote', 'local path ' + value)
+        else:
+            scp = re.fullmatch(r'([A-Za-z0-9._-]+)@([A-Za-z0-9.-]+):([^/:][^:]*)', value)
+            u = urlsplit('ssh://%s@%s/%s' % scp.groups() if scp and '://' not in value else value)
+            if u.scheme != 'ssh' or not u.hostname:
+                report('WARN', 'remote', value + ' is not an ssh remote; ssh checks skipped')
+            else:
+                known = Path(os.path.expanduser('~/.ssh/known_hosts'))
+                rc, _, _ = run(['ssh-keygen', '-F', u.hostname, '-f', str(known)])
+                report('OK' if rc == 0 else 'FAIL', 'known_hosts', u.hostname + (' present' if rc == 0 else ' missing'), '' if rc == 0 else 'verify the published host fingerprints, then ssh-keyscan %s >> ~/.ssh/known_hosts' % u.hostname)
+                import shlex
+                rc, out, err = run(['ssh', '-F', '/dev/null', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '-o', 'StrictHostKeyChecking=yes',
+                                    '-o', 'UpdateHostKeys=no', '-o', 'UserKnownHostsFile=' + str(known), '-T', '%s@%s' % (u.username or 'git', u.hostname)], timeout=20)
+                text = (out + err)
+                if 'successfully authenticated' in text:
+                    report('OK', 'ssh_auth', u.hostname + ' accepts the key')
+                elif 'Permission denied' in text:
+                    report('FAIL', 'ssh_auth', u.hostname + ': permission denied', 'load the key into ssh-agent or keep it as ~/.ssh/id_*, and register its public key with the account')
+                elif rc == 255 or rc is None:
+                    report('FAIL', 'ssh_auth', 'connection to %s failed' % u.hostname, 'check network, DNS and known_hosts')
+                else:
+                    report('OK', 'ssh_auth', '%s reachable (exit %s)' % (u.hostname, rc))
+    products = ('claude', 'codex') if args.profile == 'claude-codex' else (args.profile,)
+    for product in products:
+        path = shutil.which(product)
+        report('OK' if path else 'WARN', product, path or 'not on PATH', '' if path else 'install %s on this machine or choose a profile without it' % product)
+    print('DOCTOR: %d ok, %d warn, %d fail' % (counts['OK'], counts['WARN'], counts['FAIL']))
+    return 1 if counts['FAIL'] else 0
 
 
 def check(args):
@@ -890,6 +996,8 @@ def main():
     diagnostics.mark('validate_plan')
     os.umask(0o077)
     args = arguments()
+    if args.command == 'doctor':
+        return doctor(args)
     layout(args)  # Reject unsafe paths before even creating a source lock.
     # 封存的 bootstrap／cohort 協定留下的標記一律拒絕並原樣保留；不進入 lock 或任何寫入。
     for name in COORDINATION_MARKERS:

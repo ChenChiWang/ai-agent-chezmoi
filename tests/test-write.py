@@ -668,6 +668,24 @@ sys.exit(10 if secret else 0)
         self.assertIn(b'CHECK_SKIPPED', result.stdout)
         self.assertIn(b'previous result from 1970-01-0', result.stdout)
 
+    def test_doctor_reports_layout_and_config(self):
+        config = self.write_config()
+        result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
+                                capture_output=True, timeout=120, text=True)
+        self.assertIn('OK   config:', result.stdout); self.assertIn('OK   source:', result.stdout)
+        self.assertIn('OK   targets:', result.stdout); self.assertIn('OK   remote: local path', result.stdout)
+        self.assertIn('OK   plan_dir:', result.stdout) if (self.root / 'plans').exists() else self.assertIn('FAIL plan_dir:', result.stdout)
+        self.assertIn('DOCTOR:', result.stdout)
+        (self.dst / '.codex/AGENTS.md').unlink()
+        result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
+                                capture_output=True, timeout=120, text=True)
+        self.assertEqual(result.returncode, 1); self.assertIn('FAIL targets:', result.stdout)
+        result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(self.write_config(writer='nobody'))], env=self.env,
+                                cwd=self.root, capture_output=True, timeout=120, text=True)
+        self.assertEqual(result.returncode, 78); self.assertIn('INVALID_CONFIG', result.stdout)
+        result = subprocess.run(['sh', str(ENGINE), 'doctor'], env=self.env, cwd=self.root, capture_output=True, timeout=120, text=True)
+        self.assertIn('WARN config: no --config', result.stdout)
+
     def test_check_explicit_options_and_network_failure(self):
         base = ['check', '--source', self.src, '--destination', self.dst, '--remote', self.remote,
                 '--branch', 'main', '--scanner', self.scanner]

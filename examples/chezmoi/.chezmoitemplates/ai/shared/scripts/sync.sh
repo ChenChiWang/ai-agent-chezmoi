@@ -10,7 +10,7 @@ case "${1:-}" in
     shift
     engine_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd -P)
     exec python3 "$engine_dir/sync-migrate.py" "$@" ;;
-  plan|in|push|check)
+  plan|in|push|check|doctor)
     command -v python3 >/dev/null 2>&1 || fail 69 'MISSING_DEPENDENCY: Python required'
     engine_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd -P)
     exec python3 "$engine_dir/sync-write.py" "$@" ;;

@@ -181,7 +181,14 @@ sandbox」。新增 `tests/session-acceptance.sh`（呼叫真實模型、有費�
 代價是 BLOCKED_STALE_PLAN 變多（A 建 plan 後 B 先 push），引擎已安全處理，只需重建 plan。`auto_in` 與角色獨立。
 Codex 當 writer 時仍受其 sandbox 限制，每次寫入與 push 需核准跳出。
 
-## 7. 附錄：本次複查的程式碼問題
+## 7. Agent 自主上線（2026-09-26 已實作）
+
+`setup/AGENT-SETUP.md` 是給 agent 的上線手冊，每步標明「agent 做」或「問使用者」。`setup/preflight.sh`
+為安裝前唯讀自檢，`setup/install-gitleaks.sh` 釘版本安裝並核對官方 SHA-256，引擎 `doctor` 為部署後
+自檢。與封存 bootstrap 的差別：沒有常駐程式、不接管 CLI、每個系統變更都經使用者確認框。SKILL 的
+「不得代建參數檔」放寬為僅限上線流程且值經使用者確認。
+
+## 8. 附錄：本次複查的程式碼問題
 
 
 引擎（需修，對應 D）：
