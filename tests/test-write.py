@@ -154,6 +154,28 @@ sys.exit(10 if secret else 0)
         self.assertIn(b'NO_CHANGES', self.execute())
         self.assertEqual(before, self.state())
 
+    def test_umask_only_modes_are_neither_changes_nor_rewritten(self):
+        # 模擬 umask 002 下 chezmoi 部署出的 664/775：不算變更，寫入內容時也保留原權限（#6）
+        for p in self.dst.rglob('*'):
+            if p.is_file():
+                p.chmod(p.stat().st_mode | 0o020)
+        before = self.state()
+        self.plan()
+        self.assertIn(b'NO_CHANGES', self.execute())
+        self.assertEqual(before, self.state())
+        self.planfile.unlink()
+        self.plan('in')
+        self.assertIn(b'NO_CHANGES', self.execute('in'))
+        self.assertEqual(before, self.state())
+        self.planfile.unlink()
+        self.incoming()
+        self.plan('in')
+        self.execute('in')
+        claude = self.dst / '.claude/CLAUDE.md'
+        self.assertIn('Incoming shared edit.', claude.read_text())
+        self.assertEqual(claude.stat().st_mode & 0o777, 0o664)
+        self.assertEqual((self.dst / '.config/ai-agent/bin/sync.sh').stat().st_mode & 0o777, 0o775)
+
     def test_stale_source_destination_index_branch_remote(self):
         self.edit()
         self.plan()

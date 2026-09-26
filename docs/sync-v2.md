@@ -261,7 +261,11 @@ instructions slot rather than a repository file. See [scanner details](secret-sc
 Before changing files, the engine rechecks the approved state and acquires Git's
 `index.lock`. It stores private old/new bytes, modes, hashes, paths and old/new ref
 IDs in `.git/ai-agent-sync-transaction/manifest.json` and numbered backup files.
-Files are replaced atomically one at a time. The branch ref update compares the
+Files are replaced atomically one at a time. Generated outputs are canonically `644`,
+or `755` when executable, but a mode that differs only by the user's umask (for
+example `664` from a `chezmoi apply` under umask `002`) is not a change: a file whose
+bytes match is never rewritten, and a file whose bytes change keeps its existing mode
+(since 2026-09-27). The branch ref update compares the
 expected old OID; see [Git update-ref](https://git-scm.com/docs/git-update-ref).
 The isolated index becomes the real index only within this guarded transaction.
 For local-only `in`, the original index bytes are preserved.

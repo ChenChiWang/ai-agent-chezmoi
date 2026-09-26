@@ -64,8 +64,8 @@ jobs:
           install -d -o ci -g ci /home/ci/repo
           git -c safe.directory='*' -C "$src" archive --format=tar HEAD | tar -x -C /home/ci/repo
           chown -R ci:ci /home/ci/repo
-      # su - 經過 pam_umask，同名主要群組的使用者會拿到 umask 002；test-write.py 在 002 下
-      # 有 3 個測試失敗（#6）。修好之前固定為 022，與其他 job 及已驗證的環境一致。
+      # su - 經過 pam_umask，同名主要群組的使用者會拿到 umask 002。同步引擎在 002 下的行為已修正（#6），
+      # 並由 test-write.py 的回歸測試直接模擬 664 覆蓋；遷移工具在 002 下仍會失敗（#8），修好前固定為 022。
       - name: Install pinned tools and run tests
         shell: wsl-bash {0}
         run: |

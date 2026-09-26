@@ -187,8 +187,24 @@ def summary(snap):
     return {p: [digest(v[0]), v[1]] for p, v in snap.items()}
 
 
+def canonical_mode(mode):
+    return 0o755 if mode & 0o111 else 0o644
+
+
 def normalized(snap):
-    return {p: (v[0], 0o755 if v[1] & 0o111 else 0o644) for p, v in snap.items()}
+    return {p: (v[0], canonical_mode(v[1])) for p, v in snap.items()}
+
+
+def same(current, value):
+    # 只差 umask 的權限（例如 664 對 644）不算變更，與 plan/status 的判斷一致
+    return current is not None and current[0] == value[0] and canonical_mode(current[1]) == canonical_mode(value[1])
+
+
+def keep_mode(current, value):
+    # 內容要更新但權限只差 umask 時，沿用現有權限，避免與 chezmoi 互相改寫
+    if current is not None and canonical_mode(current[1]) == canonical_mode(value[1]):
+        return value[0], current[1]
+    return value
 
 
 def fsync_dir(path):
@@ -580,7 +596,12 @@ class Engine:
                 f.flush()
                 os.fsync(f.fileno())
             need(self.state() == self.before, 'BLOCKED_STALE_PLAN', 68)
-            changes = [(p, v) for p, v in changes if read(p) != v]
+            pending = []
+            for p, v in changes:
+                current = read(p)
+                if not same(current, v):
+                    pending.append((p, keep_mode(current, v)))
+            changes = pending
             changes.append((self.gd / 'index', (new_index, read(self.gd / 'index')[1])))
             manifest = []
             diagnostics.mark('backup_files')
@@ -661,7 +682,7 @@ class Engine:
                 new_index = (self.iso / 'index').read_bytes()
             else:
                 new_index = read(self.gd / 'index')[0]
-            if self.remote_head == self.head and all(read(p) == v for p, v in changes):
+            if self.remote_head == self.head and all(same(read(p), v) for p, v in changes):
                 print('NO_CHANGES')
                 return
             if self.remote_head != self.head:
@@ -686,7 +707,7 @@ class Engine:
             self.transact(new_head, [(self.dst / p, v) for p, v in self.rendered.items()],
                           (self.iso / 'index').read_bytes())
         else:
-            changes = [(self.dst / p, v) for p, v in self.rendered.items() if read(self.dst / p) != v]
+            changes = [(self.dst / p, v) for p, v in self.rendered.items() if not same(read(self.dst / p), v)]
             if changes:
                 self.transact(new_head, changes, read(self.gd / 'index')[0])
             else:
