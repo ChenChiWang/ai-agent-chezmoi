@@ -39,8 +39,18 @@ if command -v ssh >/dev/null 2>&1; then
   esac
   ls "$HOME"/.ssh/id_* >/dev/null 2>&1 && ok ssh_identity "default identity file present" || warn ssh_identity "no ~/.ssh/id_* file" "ssh-keygen -t ed25519, or load a key into ssh-agent"
 else fail ssh "not found" "install OpenSSH client"; fi
-command -v claude >/dev/null 2>&1 && ok claude "$(command -v claude)" || warn claude "not on PATH" "install Claude Code if this machine will run it"
-command -v codex  >/dev/null 2>&1 && ok codex  "$(command -v codex)"  || warn codex  "not on PATH" "install Codex CLI if this machine will run it"
+# WSL 會把 Windows 的 PATH 附加進來；解析到 Windows 磁碟上的 CLI 管的是 Windows 端設定，不是這個 HOME。
+win_root=
+case "$(uname -r)" in *[Mm]icrosoft*) win_root=$(wslpath -u 'C:\' 2>/dev/null) || win_root=; win_root=${win_root%/*/} ;; esac
+agent_cli() {
+  found=$(command -v "$1" 2>/dev/null) || { warn "$1" "not on PATH" "install $2 if this machine will run it"; return; }
+  if [ -n "$win_root" ]; then
+    case "$found" in "$win_root"/*) warn "$1" "Windows binary at $found" "install $2 inside WSL (docs/wsl.md)"; return ;; esac
+  fi
+  ok "$1" "$found"
+}
+agent_cli claude "Claude Code"
+agent_cli codex "Codex CLI"
 src=${CHEZMOI_SOURCE:-$HOME/.local/share/chezmoi}
 [ -d "$src/.git" ] && ok chezmoi_source "$src" || warn chezmoi_source "$src not initialized" "chezmoi init <private remote> (then diff, then apply)"
 [ -x "$HOME/.config/ai-agent/bin/sync.sh" ] && ok engine "deployed at ~/.config/ai-agent/bin" || warn engine "not deployed" "chezmoi apply deploys it"

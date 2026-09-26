@@ -34,13 +34,18 @@ Report the lines. Continue with the `FAIL` items only.
 
 | FAIL line | You do |
 | --- | --- |
-| `platform` | stop the bring-up and install nothing: native Windows (Git Bash, MSYS2, Cygwin) cannot run the engine. Tell the user it has to be done inside WSL, with Claude Code and Codex installed there, and ask whether to continue that way |
-| `git` | propose `brew install git` (macOS) or the distribution package; run after confirmation |
+| `platform` | stop the bring-up and install nothing: native Windows (Git Bash, MSYS2, Cygwin) cannot run the engine. Tell the user it has to be done inside WSL, with Claude Code and Codex installed there, and ask whether to continue that way; the WSL specifics are in `docs/wsl.md` |
+| `git` | propose `brew install git` (macOS) or the distribution package; run after confirmation. If the distribution ships an older Git (Ubuntu 24.04 has 2.43), the user adds `ppa:git-core/ppa` with sudo; you do not run sudo |
 | `chezmoi` | propose `brew install chezmoi` or the official install script into `~/.local/bin`; run after confirmation |
 | `python3` | propose the platform's Python 3.9+ package; run after confirmation |
 | `gitleaks` | propose `sh setup/install-gitleaks.sh`; it downloads 8.30.1, verifies the official SHA-256 and installs to `~/.local/bin` without sudo; run after confirmation |
 
 Re-run preflight after each install.
+
+On WSL, `WARN claude: Windows binary at ...` (or `codex`) means PATH resolves to the
+Windows-side CLI, which manages the Windows `~/.claude`, not this HOME. Propose installing
+the agent inside WSL (see `docs/wsl.md`), run it after confirmation, and ask the user to
+log in to it there.
 
 ## Step 3: SSH
 
