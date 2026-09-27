@@ -52,7 +52,7 @@ sessions／history／cache／plugins，以及任何 `*.key`、`*.pem`、`*.token
 
 | 項目 | 要求 |
 |---|---|
-| 作業系統 | **macOS 已測**。Linux：程式碼為 POSIX，應可運作但尚未驗收。Windows：只能透過 WSL，且 Claude Code 與 Codex 都要在 WSL 內執行（Windows 端的 `~/.claude` 不會被管理）；已在 WSL2 Ubuntu 24.04 以 `claude` profile 完成一次上線驗證，Codex 尚未驗證，見 [`docs/wsl.md`](./docs/wsl.md)；原生 Windows 與 Git Bash 不支援（引擎寫死 `/tmp`、POSIX 權限與執行位元、`os.getuid`）。 |
+| 作業系統 | **macOS 已測**。Linux：程式碼為 POSIX，應可運作但尚未驗收。Windows：只能透過 WSL，且 Claude Code 與 Codex 都要在 WSL 內執行（Windows 端的 `~/.claude` 不會被管理）；已在 WSL2 Ubuntu 24.04 以 `claude` profile 完成一次上線驗證，Codex 尚未驗證，見 [`docs/wsl.md`](./docs/wsl.md)；原生 Windows 與 Git Bash 無法執行引擎（引擎依賴 `/tmp`、POSIX 權限與執行位元、`os.getuid`）；原生 Windows 只能用 `setup/windows-follow.ps1` 把共用規則跟隨套用到 `~/.claude`（見 [`docs/wsl.md`](./docs/wsl.md) 第 7 節）。 |
 | Git | 2.45 以上（需支援 `--no-lazy-fetch`） |
 | chezmoi | 2.71 系列已測 |
 | Python | 3.9 以上，只用標準函式庫 |
@@ -161,7 +161,8 @@ sh tests/session-acceptance.sh claude|codex      # 呼叫真實模型驗收開�
 ```
 
 Commit／push 只在臨時本機 fixture 執行，測試不會碰你的私有 repo。CI（[`.github/workflows/tests.yml`](./.github/workflows/tests.yml)）
-在 Ubuntu 24.04、macOS 15 與 WSL2 Ubuntu 24.04 上執行 `session-acceptance.sh` 以外的全部測試。
+在 Ubuntu 24.04、macOS 15 與 WSL2 Ubuntu 24.04 上執行 `session-acceptance.sh` 以外的全部測試，
+並在原生 Windows 執行跟隨模式的端對端測試（`.github/ci/test-windows-follow.ps1`）。
 
 ## Legacy v1
 

@@ -70,7 +70,8 @@ VS Code 的 Claude Code 擴充在 WSL 模式下會自帶 Linux 版的執行檔
 3. 打開 Claude 面板並登入。
 
 用 Windows 模式開 VS Code（左下角沒有 `WSL`）時，擴充跑在 Windows，讀的是 Windows 端的
-`~/.claude`，不會同步。preflight 的 `claude` 檢查只看 PATH 上的 CLI，不會反映 VS Code 擴充。
+`~/.claude`：只能用第 7 節的跟隨模式取得共用規則，不跑同步檢查。preflight 的 `claude` 檢查只看
+PATH 上的 CLI，不會反映 VS Code 擴充。
 
 ## 4. SSH
 
@@ -101,27 +102,50 @@ agent 會照 `setup/AGENT-SETUP.md` 走 4A（或第一台機器走 4B），然�
 
 ## 6. 已知限制
 
-- **兩套 Claude 設定。** Windows 端的 `~/.claude` 不受 v2 管理。同一台機器上如果 Windows 和
-  WSL 都在用 Claude Code，只有 WSL 那套會同步。
-- **Windows 端想沿用同一份規則時，只套用 `~/.claude`。** Windows 端沒有參數檔也沒有引擎，
-  共用指示會讓它安靜跳過同步檢查。但不帶路徑的 `chezmoi apply` 或 `chezmoi update` 會把引擎
-  部署到 `~/.config/ai-agent/bin`，這台就會變成「有引擎、沒參數檔」，被當成上線不完整而每次
-  回報。所以在 Windows 端（PowerShell）只更新 `~/.claude`：
-
-  ```powershell
-  git -C $HOME\.local\share\chezmoi pull --ff-only
-  chezmoi diff --recursive $HOME\.claude     # 帶目錄參數時要加 --recursive 才有輸出
-  chezmoi apply --recursive $HOME\.claude
-  ```
+- **兩套 Claude 設定。** Windows 端的 `~/.claude` 不受 v2 引擎管理。同一台機器上如果 Windows 和
+  WSL 都在用 Claude Code，Windows 端只能用第 7 節的跟隨模式取得同一份規則，不能從那裡記錄或發布。
 - **statusLine 需要 Node。** 如果 synced 的 `settings.json` 用 `npx` 啟動 statusLine，
   WSL 內也要有 Node；Claude Code 本身（native 版）不需要 Node。
 - **從 Windows 端的 agent 驅動 WSL。** PowerShell 傳給 `wsl -- bash -c '...'` 的引號會被
   改寫，指令常常只執行一半。請把步驟寫成腳本檔，再用 `wsl -d <distro> -- bash -l /mnt/c/.../script.sh`
   執行；`-l` 會讀 `~/.profile`，`~/.local/bin` 才會在 PATH 上。
 
+## 7. 原生 Windows 的跟隨模式
+
+原生 Windows 不跑引擎，但可以**跟隨**同一份共用規則：把私有 dotfiles 的內容套用到 Windows 端的
+`~/.claude`，讓 Windows 版 Claude Code（包括 Windows 模式的 VS Code）用到一樣的規則與 skills。
+規則的修改與發布要在 WSL 或 macOS／Linux 上做。
+
+一次性準備（PowerShell）：
+
+1. 安裝 Git for Windows 與 chezmoi（例如 `winget install twpayne.chezmoi`；已測版本為 2.71 系列）。
+2. 安裝固定版本的 Gitleaks（核對官方 SHA-256，裝到 `~/.local/bin`，需要時把它加進 PATH）：
+   `powershell -ExecutionPolicy Bypass -File setup\install-gitleaks.ps1`
+3. `chezmoi init <你的私有 dotfiles remote>`，**不要**執行不帶路徑的 `chezmoi apply`。
+
+每次更新，從公開 repo 的 clone 執行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1
+powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1 -Apply -Expect <預覽印出的 REMOTE_HEAD>
+```
+
+- **預覽**只做 `git fetch`：用與引擎相同的方式以 Gitleaks 掃描遠端最新版本，再用匯出的內容顯示
+  `~/.claude` 的 diff，不改動 chezmoi source，也不改動 `~/.claude`。
+- **套用**必須帶預覽印出的 `REMOTE_HEAD`；遠端在這之間又有新 commit 就拒絕，避免套用沒看過的內容。
+  它會 fast-forward source，只執行 `chezmoi apply --no-tty --recursive ~/.claude`，最後確認
+  `~/.claude` 與 source 一致、且沒有部署 `~/.config/ai-agent`。
+- 會停下來的情況：發現可能的秘密（`BLOCKED_SECRET`，只列檔案與規則，不顯示內容）、source 有本地
+  修改或有遠端沒有的 commit、`~/.config/ai-agent` 已存在（引擎不能在原生 Windows 執行，請移除）、
+  `~/.claude` 裡的檔案在本機被改過（chezmoi 以 EOF 停下，不覆寫）。
+
+不要用不帶路徑的 `chezmoi apply` 或 `chezmoi update`：它們會把引擎部署到 `~/.config/ai-agent`，
+這台就變成「有引擎、沒參數檔」，被共用指示當成上線不完整而每次回報。
+
 ## 驗證紀錄
 
 | 日期 | 環境 | 結果 |
 | --- | --- | --- |
 | 2026-09-26 | Windows 11 Pro 10.0.26200、WSL2 Ubuntu 24.04.1（kernel 6.18.33.2-microsoft-standard-WSL2）；git 2.55.0（PPA）、chezmoi 2.71.1、Python 3.12.3、Gitleaks 8.30.1、Claude Code 2.1.283；profile `claude`，repository profile `claude-codex`，路徑 4A | preflight 0 fail；`doctor` 13 ok／0 warn／0 fail；`status` `NO_CHANGES`；`check` `UP_TO_DATE`。Codex 與 `tests/session-acceptance.sh` 未驗證 |
+| 2026-09-27 | 同上機器的原生 Windows 端；Windows PowerShell 5.1、chezmoi 2.71.0（winget）、Gitleaks 8.30.1 | `setup/windows-follow.ps1` 對真實私有 dotfiles 預覽：遠端 40 個檔案掃描乾淨、`NO_CHANGES`；`.github/ci/test-windows-follow.ps1` 的端對端情境全部通過 |
 | 2026-09-27 | 同上機器；VS Code 1.137.0 以 WSL 模式開啟，WSL 內安裝 Claude Code 擴充 2.1.283（使用擴充自帶的 `native-binary/claude`） | 新對話的第一個工具呼叫就是開工檢查（`NO_CHANGES`、`CHECKED_TODAY`），之後才讀專案；session 紀錄寫在 WSL 的 `~/.claude/projects/` |

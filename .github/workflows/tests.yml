@@ -33,6 +33,19 @@ jobs:
       - name: Run tests
         run: sh .github/ci/run-tests.sh
 
+  # 原生 Windows 不跑引擎，只驗證跟隨模式（setup/windows-follow.ps1）；以 Windows PowerShell 5.1 執行
+  windows-follow:
+    name: windows-2025 (native follower)
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Windows follower end-to-end
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .github\ci\test-windows-follow.ps1
+
   wsl:
     name: windows-2025 (WSL2 Ubuntu 24.04)
     runs-on: windows-2025
