@@ -13,11 +13,16 @@ mkdir -p "$src" "$dst" "$test_root/home" "$test_root/cache"
 cp -R "$repo/examples/chezmoi/." "$src/"
 # 與文件建議的本機設定一致，部署權限不受 shell umask 影響
 printf 'umask = 0o022\n' > "$test_root/config.toml"
+# 夾具的 Git 不做背景維護：自動維護會短暫留下 .git/objects/maintenance.lock，
+# 比對完整狀態的測試會因此時好時壞（#26）
 isolated() {
   env -i PATH="$test_path" HOME="$test_root/home" LC_ALL=C \
     XDG_CONFIG_HOME="$test_root/home/config" XDG_CACHE_HOME="$test_root/cache" \
     XDG_DATA_HOME="$test_root/home/data" XDG_STATE_HOME="$test_root/home/state" \
     GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 \
+    GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=maintenance.auto GIT_CONFIG_VALUE_0=false \
+    GIT_CONFIG_KEY_1=gc.auto GIT_CONFIG_VALUE_1=0 \
+    GIT_CONFIG_KEY_2=receive.autogc GIT_CONFIG_VALUE_2=false \
     "$@"
 }
 cm() {
