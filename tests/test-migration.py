@@ -497,5 +497,99 @@ sys.exit(10 if secret else 0)
         self.assertEqual(before, self.state())
 
 
+    # ---- skill 集合由 source 決定：source 比範本多一個 skill 時擴充 Codex ----
+
+    def added_skill(self, name, homes=('claude',)):
+        body = ('---\nname: %s\ndescription: Fixture skill.\n---\n\nFixture body.\n' % name).encode()
+        self.put('.chezmoitemplates/ai/shared/skills/%s/SKILL.md' % name, body)
+        for home in homes:
+            self.put('dot_%s/skills/%s/SKILL.md.tmpl' % (home, name), API['wrapper']('dot_%s/skills/%s/SKILL.md.tmpl' % (home, name)))
+        return body
+
+    def claude_only_with_added_skill(self):
+        # 已經 commit 的 Claude-only v2 source，之後新增了範本沒有的 skill 並部署
+        self.convert()
+        self.local_in()
+        self.git('add', '-A')
+        self.git('commit', '-qm', 'synthetic v2 baseline')
+        body = self.added_skill('sample-notes')
+        target = self.dst / '.claude/skills/sample-notes/SKILL.md'
+        target.parent.mkdir()
+        target.write_bytes(body)
+        target.chmod(0o644)
+        self.git('add', '-A')
+        self.git('commit', '-qm', 'synthetic added skill')
+        self.assertIn(b'NO_CHANGES', self.status())
+        return body
+
+    def test_enable_codex_for_a_source_with_an_added_skill(self):
+        body = self.claude_only_with_added_skill()
+        claude = self.state()
+        expansion = self.root / 'codex-expansion'
+        output = self.migration('plan', profile='claude-codex', backup=expansion)
+        self.assertEqual(claude, self.state())
+        self.assertIn(b'SOURCE: dot_agents/skills/sample-notes/SKILL.md.tmpl create', output)
+        self.assertIn(b'TARGET: .agents/skills/sample-notes/SKILL.md create', output)
+        self.assertNotIn(b'.chezmoitemplates/ai/shared/skills/sample-notes/SKILL.md', output)
+        self.migration('apply', profile='claude-codex', backup=expansion)
+        self.status('claude-codex')
+        self.local_in(expansion, 'claude-codex')
+        expanded = self.state()
+        self.cm('apply', '--force')
+        self.assertEqual(expanded, self.state())
+        for skill in API['SKILLS'] + ('sample-notes',):
+            self.assertEqual((self.dst / ('.claude/skills/' + skill + '/SKILL.md')).read_bytes(),
+                             (self.dst / ('.agents/skills/' + skill + '/SKILL.md')).read_bytes())
+        self.assertEqual((self.dst / '.agents/skills/sample-notes/SKILL.md').read_bytes(), body)
+        self.assertEqual((self.src / 'dot_agents/skills/sample-notes/SKILL.md.tmpl').read_bytes(),
+                         API['wrapper']('dot_agents/skills/sample-notes/SKILL.md.tmpl'))
+        for key, value in claude.items():
+            self.assertEqual(expanded[key], value, key)
+        self.migration('verify', profile='claude-codex', backup=expansion)
+        # 轉換之後又多了一個 skill：先前核准的清單仍然可以復原，後來的檔案不受影響
+        later = self.added_skill('later-notes', homes=('claude', 'agents'))
+        self.migration('rollback', profile='claude-codex', backup=expansion)
+        restored = self.state()
+        for key, value in claude.items():
+            self.assertEqual(restored[key], value, key)
+        # 巢狀版面下 source 也在 HOME 裡面，同一個檔案會以 target/ 開頭再出現一次
+        self.assertEqual(sorted(key for key in restored if key not in claude and key.startswith('source/')),
+                         ['source/.chezmoitemplates/ai/shared/skills/later-notes/SKILL.md',
+                          'source/dot_agents/skills/later-notes/SKILL.md.tmpl',
+                          'source/dot_claude/skills/later-notes/SKILL.md.tmpl'])
+        self.assertEqual((self.src / '.chezmoitemplates/ai/shared/skills/later-notes/SKILL.md').read_bytes(), later)
+
+    def test_enable_codex_still_refuses_extra_payload_bad_names_and_collisions(self):
+        body = self.claude_only_with_added_skill()
+        def refused(expected, label, backup):
+            before = self.state()
+            output = self.migration('plan', profile='claude-codex', backup=self.root / backup, expected=expected)
+            self.assertIn(label, output)
+            self.assertEqual(before, self.state())
+            self.assertFalse((self.root / backup).exists())
+        extra = self.src / '.chezmoitemplates/ai/shared/skills/sample-notes/helper.md'
+        extra.write_bytes(b'unknown payload')
+        refused(66, b'BLOCKED_INVENTORY_MISMATCH', 'extra-payload')
+        extra.unlink()
+        payload = self.src / 'dot_claude/skills/sample-notes/helper.sh'
+        payload.write_bytes(b'unknown payload')
+        refused(66, b'BLOCKED_INVENTORY_MISMATCH', 'wrapper-payload')
+        payload.unlink()
+        # 引擎不會為不合法的名稱產生包裝檔，所以這裡手動放入
+        self.put('.chezmoitemplates/ai/shared/skills/Bad_Name/SKILL.md', body)
+        self.put('dot_claude/skills/Bad_Name/SKILL.md.tmpl', b'placeholder')
+        with self.assertRaises(ValueError):
+            API['wrapper']('dot_claude/skills/Bad_Name/SKILL.md.tmpl')
+        refused(65, b'INVALID_LAYOUT', 'bad-name')
+        for rel in ('.chezmoitemplates/ai/shared/skills/Bad_Name', 'dot_claude/skills/Bad_Name'):
+            shutil.rmtree(self.src / rel)
+        # 已經存在的 Codex 目標不覆寫，即使內容相同
+        existing = self.dst / '.agents/skills/sample-notes/SKILL.md'
+        existing.parent.mkdir(parents=True)
+        existing.write_bytes(body)
+        refused(66, b'BLOCKED_TARGET_COLLISION', 'collision')
+        self.assertEqual(existing.read_bytes(), body)
+
+
 if __name__ == '__main__':
     unittest.main()
