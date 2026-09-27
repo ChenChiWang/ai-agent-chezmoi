@@ -164,8 +164,11 @@ powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1 -Apply -Expect
 把既有的 `~/.claude/CLAUDE.md`、`settings.json` 內容併進 source（每一步先給你看、經你確認），
 `chezmoi apply` 後掃描、做第一個 commit，並在你核准後推到你提供的**空的私有 repo**。之後每台機器都走一般流程。
 
-兩個已知限制：v2 的 skill 集合固定為範本裡的六個名稱，只能改內容、不能增減，其他 skill 維持不納管；
-既有的 legacy v1 使用者若要保留轉換與 rollback，另見 [migration readiness](./docs/history/migration-readiness.md)。
+skill 集合由 source 自己決定：`shared/skills/` 底下每個含有 `SKILL.md` 的目錄，加上它的兩個單行包裝檔。
+新增或移除 skill 和其他的 source 修改一樣，經過核准的 plan 發布與接收（見
+[skill set](./docs/sync-v2.md#skill-set)）。已知限制：一個 skill 只有一個 `SKILL.md`，帶有其他檔案的 skill
+維持不納管；之後擴充 Codex 用的轉換器仍然預期範本的六個名稱；既有的 legacy v1 使用者若要保留轉換與
+rollback，另見 [migration readiness](./docs/history/migration-readiness.md)。
 
 **不可**對本公開 repo 執行 `chezmoi init --apply`，也不可整包覆蓋現有 agent 設定。
 
