@@ -18,6 +18,11 @@ import unittest
 REPO = Path(__file__).resolve().parents[1]
 ENGINE = REPO / 'examples/chezmoi/.chezmoitemplates/ai/shared/scripts/sync.sh'
 REL = '.chezmoitemplates/ai/shared/instructions.md'
+# 夾具的 Git 不做背景維護：commit、fetch、push 之後的自動維護會短暫留下
+# .git/objects/maintenance.lock，比對完整狀態的測試會因此時好時壞（#26）
+QUIET_GIT = dict(GIT_CONFIG_COUNT='3', GIT_CONFIG_KEY_0='maintenance.auto', GIT_CONFIG_VALUE_0='false',
+                 GIT_CONFIG_KEY_1='gc.auto', GIT_CONFIG_VALUE_1='0',
+                 GIT_CONFIG_KEY_2='receive.autogc', GIT_CONFIG_VALUE_2='false')
 
 
 class WriteTests(unittest.TestCase):
@@ -36,7 +41,7 @@ class WriteTests(unittest.TestCase):
         self.env = dict(PATH=os.environ['PATH'], HOME=str(self.home), LC_ALL='C',
                         GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null',
                         GIT_TERMINAL_PROMPT='0', GIT_AUTHOR_NAME='Fixture', GIT_AUTHOR_EMAIL='fixture@example.test',
-                        GIT_COMMITTER_NAME='Fixture', GIT_COMMITTER_EMAIL='fixture@example.test')
+                        GIT_COMMITTER_NAME='Fixture', GIT_COMMITTER_EMAIL='fixture@example.test', **QUIET_GIT)
         shutil.copytree(REPO / 'examples/chezmoi', self.src)
         self.git(self.src, 'init', '-b', 'main')
         self.git(self.src, 'add', '.')
