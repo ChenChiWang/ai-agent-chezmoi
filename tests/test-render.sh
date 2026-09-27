@@ -17,7 +17,7 @@ printf '\nShared edit from one source.\n' >> "$src/.chezmoitemplates/ai/shared/i
 cm apply --force
 assert_contains "$dst/.claude/CLAUDE.md" 'Shared edit from one source.'
 assert_contains "$dst/.codex/AGENTS.md" 'Shared edit from one source.'
-isolated python3 - "$dst" "$engine" <<'PY'
+isolated python3 - "$dst" "$engine" "$src" <<'PY'
 from pathlib import Path
 import sys
 p = Path(sys.argv[1])
@@ -29,8 +29,11 @@ for f in p.rglob('*'):
     if f.is_file(): assert b'\r' not in f.read_bytes()
 import runpy
 api = runpy.run_path(str(Path(sys.argv[2]).with_name('scan-secrets.py')))
-assert {str(f.relative_to(p)) for f in p.rglob('*') if f.is_file()} == set(api['TARGET_FILES'])
-for skill in api['SKILLS']:
+skills = api['source_skills'](sys.argv[3])
+assert skills == ('dotfiles-sync', 'sample-alpha', 'sample-beta', 'sample-braces'), skills
+assert {str(f.relative_to(p)) for f in p.rglob('*') if f.is_file()} == set(api['mapping']('claude-codex', skills)[1])
+assert b'style={' + b'{ color' in (p/'.claude/skills/sample-braces/SKILL.md').read_bytes()
+for skill in skills:
     assert (p/('.claude/skills/' + skill + '/SKILL.md')).read_bytes() == (p/('.agents/skills/' + skill + '/SKILL.md')).read_bytes()
 assert (p/'.config/ai-agent/bin/sync-migrate.py').stat().st_mode & 0o111
 

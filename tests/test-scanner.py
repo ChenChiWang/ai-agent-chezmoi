@@ -193,6 +193,8 @@ class EngineTests(ScannerTests):
     def test_engine_real_scanner(self):
         src, dst = self.root / "source", self.root / "destination"
         shutil.copytree(REPO / "examples/chezmoi", src)
+        # 範本只附帶引擎自己的 skill；其他的是測試專用的夾具
+        shutil.copytree(REPO / "tests/fixtures/skills", src, dirs_exist_ok=True)
         dst.mkdir()
         config = self.root / "config.toml"
         config.write_text("umask = 0o022\n")

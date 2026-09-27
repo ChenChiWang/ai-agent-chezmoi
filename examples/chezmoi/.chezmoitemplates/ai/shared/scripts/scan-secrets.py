@@ -13,9 +13,9 @@ import tempfile
 
 VERSION = "8.30.1"
 MAX_BYTES = 8 * 1024 * 1024
-# 範本預設的 skill 集合。實際同步的集合由每個 source snapshot 自己的目錄決定（skills_in）；
-# 這份清單只用於 v1 轉換，以及還沒有 skill 目錄的 source。第一個名稱是引擎自己的 skill，永遠存在。
-SKILLS = ('dotfiles-sync', 'd3-component', 'deploy', 'excel-import', 'review', 'supabase-migrate')
+# 範本附帶的 skill：只有引擎自己的這一個，它永遠是集合的第一個。實際同步的集合由每個
+# source snapshot 自己的目錄決定（skills_in）；還沒有 skill 目錄的 source 使用這份清單。
+SKILLS = ('dotfiles-sync',)
 SKILL_LIMIT = 64
 PROFILES = ('claude', 'codex', 'claude-codex')
 PREFIX = '.chezmoitemplates/ai/'

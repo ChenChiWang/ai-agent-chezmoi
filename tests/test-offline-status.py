@@ -35,6 +35,8 @@ class OfflineStatusTests(unittest.TestCase):
         self.root = Path(temp.name).resolve()
         self.src, self.dst = self.root / "source 中文 space", self.root / "destination"
         shutil.copytree(REPO / "examples/chezmoi", self.src)
+        # 範本只附帶引擎自己的 skill；其他的是測試專用的夾具
+        shutil.copytree(REPO / "tests/fixtures/skills", self.src, dirs_exist_ok=True)
         self.dst.mkdir()
         (self.root / "home").mkdir()
         self.bin = self.root / "bin"
