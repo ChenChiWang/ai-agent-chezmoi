@@ -49,7 +49,7 @@ def blob(backup, entry):
 
 
 class Migration(w.Engine):
-    # v1 轉換使用範本的集合；擴充 Codex 時由 select() 換成 source 或清單自己的集合
+    # 建立計畫時由 select() 換成 source 自己的集合，套用、驗證與復原時換成清單的集合
     skill_set = a.SKILLS
 
     def __init__(self, args, tmp):
@@ -64,7 +64,7 @@ class Migration(w.Engine):
         self.journal = self.gd / 'ai-agent-migration-transaction'
 
     def select(self, read):
-        # 擴充 Codex 時，集合是這份 source 自己的；套用、驗證與復原時，集合來自已核准的清單
+        # 建立計畫時，集合是這份 source 自己的；套用、驗證與復原時，集合來自已核准的清單
         try:
             self.skill_set = read()
         except (ValueError, OSError, TypeError, KeyError, AttributeError):
@@ -78,7 +78,7 @@ class Migration(w.Engine):
 
     def layout(self, legacy):
         # Reject extra skill payloads/encodings instead of silently omitting them.
-        expected = {p for p in (a.LEGACY_FILES if legacy else a.mapping('claude', self.skill_set)[0])
+        expected = {p for p in (a.legacy_files(self.skill_set) if legacy else a.mapping('claude', self.skill_set)[0])
                     if p.startswith('dot_claude/skills/')}
         actual = set()
         root = self.src / 'dot_claude/skills'
@@ -90,7 +90,7 @@ class Migration(w.Engine):
                 actual.add((Path(parent) / name).relative_to(self.src).as_posix())
         w.need(actual == expected, 'BLOCKED_INVENTORY_MISMATCH', 66)
         if legacy:
-            for skill in a.SKILLS:
+            for skill in self.skill_set:
                 data = w.read(self.src / ('dot_claude/skills/' + skill + '/SKILL.md'))[0]
                 w.text_file(data)
                 lines = data.decode().splitlines()
@@ -117,7 +117,7 @@ class Migration(w.Engine):
                    'BLOCKED_INVENTORY_MISMATCH', 66)
         # Reject alternative chezmoi encodings that could target our outputs.
         # Unknown unrelated files are preserved; no content is read here.
-        allowed = set(a.LEGACY_FILES if legacy else a.mapping('claude', self.skill_set)[0])
+        allowed = set(a.legacy_files(self.skill_set) if legacy else a.mapping('claude', self.skill_set)[0])
         attributes = ('encrypted_', 'executable_', 'literal_', 'private_', 'readonly_',
                       'empty_', 'exact_', 'create_', 'modify_', 'remove_', 'symlink_')
         managed = set(a.mapping('claude-codex', self.skill_set)[1])
@@ -177,8 +177,7 @@ class Migration(w.Engine):
         legacy = self.a.mode == 'legacy'
         w.need((legacy and self.profile == 'claude') or (not legacy and self.profile == 'claude-codex'),
                'INVALID_PROFILE_TRANSITION')
-        if not legacy:
-            self.select(lambda: a.source_skills(self.src, 'claude'))
+        self.select(lambda: a.legacy_skills(self.src) if legacy else a.source_skills(self.src, 'claude'))
         self.layout(legacy)
         if legacy:
             w.need(not (self.src / '.chezmoitemplates/ai').exists(), 'BLOCKED_EXISTING_V2', 66)
@@ -187,7 +186,8 @@ class Migration(w.Engine):
                    'BLOCKED_INVENTORY_MISMATCH', 66)
         reference = Path(self.a.reference).resolve()
         w.need(reference.is_dir() and reference != self.src, 'INVALID_REFERENCE')
-        source_paths = sorted(set(self.files) | (set(a.LEGACY_FILES) if legacy else set()))
+        legacy_files, legacy_targets = a.legacy_files(self.skill_set), a.legacy_targets(self.skill_set)
+        source_paths = sorted(set(self.files) | (set(legacy_files) if legacy else set()))
         source = snap(self.src, source_paths)
         target = snap(self.dst, self.targets)
         # 範本沒有的 skill：本體來自 source，包裝檔是固定的一行，由引擎產生
@@ -199,26 +199,26 @@ class Migration(w.Engine):
         self.scan({p: v for p, v in template.items() if v is not None})
         retired = None
         if legacy:
-            for p in a.LEGACY_FILES:
+            for p in legacy_files:
                 if p not in ('.gitignore', '.gitattributes'):
                     w.need(source[p] is not None, 'BLOCKED_INVENTORY_MISMATCH', 66)
             # Do not merge with a partially installed core or ambiguous templates.
             for p in self.files:
-                if p not in a.LEGACY_FILES:
+                if p not in legacy_files:
                     w.need(source[p] is None, 'BLOCKED_EXISTING_V2', 66)
-            for path in a.LEGACY_TARGETS:
+            for path in legacy_targets:
                 w.need(target[path] is not None, 'BLOCKED_MISSING_LEGACY_TARGET', 66)
                 src_path = ('dot_claude/skills/dotfiles-sync/executable_sync.sh'
                             if path.endswith('/sync.sh') else 'dot_claude/' + path[len('.claude/'):])
                 w.need(target[path][0] == source[src_path][0], 'DRIFT', 2)
-            for path in set(self.targets) - set(a.LEGACY_TARGETS):
+            for path in set(self.targets) - set(legacy_targets):
                 w.need(target[path] is None, 'BLOCKED_TARGET_COLLISION', 66)
             parts, rule_id = self.split_rules(source['dot_claude/CLAUDE.md'][0])
             candidate = dict(template)
             candidate[a.PREFIX + 'shared/instructions.md'] = (a.encode_shared(parts['shared']), 0o644)
             candidate[a.PREFIX + 'adapters/claude.md'] = (a.encode_shared(parts['claude']) + template[a.PREFIX + 'adapters/claude.md'][0], 0o644)
             retired = dict(rules_map=rule_id, content=w.digest(parts['retire-sync']))
-            for skill in a.SKILLS[1:]:
+            for skill in self.skill_set[1:]:
                 candidate[a.PREFIX + 'shared/skills/' + skill + '/SKILL.md'] = (
                     a.encode_shared(source['dot_claude/skills/' + skill + '/SKILL.md'][0]), 0o644)
             candidate['dot_claude/settings.json'] = source['dot_claude/settings.json']
@@ -228,6 +228,7 @@ class Migration(w.Engine):
             old_ignore = source['.chezmoiignore'][0]
             candidate['.chezmoiignore'] = (old_ignore + b'\n# v2 migration exclusions\n' + template['.chezmoiignore'][0],
                                           source['.chezmoiignore'][1])
+            w.need(all(v is not None for v in candidate.values()), 'INVALID_REFERENCE')
         else:
             w.need(not self.a.rules_map, 'USAGE: rules map is legacy-only', 64)
             old_files, old_targets = a.mapping('claude', self.skill_set)
@@ -320,7 +321,7 @@ class Migration(w.Engine):
                and doc['source'] == str(self.src) and doc['destination'] == str(self.dst), 'INVALID_MANIFEST')
         w.need(doc['mode'] in ('legacy', 'enable-codex'), 'INVALID_MANIFEST')
         self.select(lambda: a.skills_in(list(doc['after']['source']), self.profile))
-        expected = set(self.files) | (set(a.LEGACY_FILES) if doc['mode'] == 'legacy' else set())
+        expected = set(self.files) | (set(a.legacy_files(self.skill_set)) if doc['mode'] == 'legacy' else set())
         self.values = {}
         for side in ('before', 'after'):
             self.values[side] = {}

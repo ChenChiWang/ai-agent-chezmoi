@@ -596,5 +596,89 @@ sys.exit(10 if secret else 0)
         self.assertEqual(existing.read_bytes(), body)
 
 
+    # ---- v1 轉換讀 source 自己的 skill：名稱與數量都可以和範本不同 ----
+
+    def other_v1_skills(self):
+        # 把 v1 夾具換成另一組 skill：拿掉兩個範本名稱，加入兩個範本沒有的
+        removed, added = API['SKILLS'][1:3], ('sample-notes', 'sample-braces')
+        for skill in removed:
+            shutil.rmtree(self.src / 'dot_claude/skills' / skill)
+            shutil.rmtree(self.dst / '.claude/skills' / skill)
+            del self.skills[skill]
+        for skill in added:
+            data = ('---\nname: ' + skill + '\ndescription: Synthetic legacy fixture for ' + skill + '.\n---\n\n# ' + skill + '\n').encode()
+            if skill == 'sample-braces':
+                data += b'\n<Chart style={{ color: "red" }} />\nLiteral {{ output "sh" "-c" "exit 99" }} remains text.\n'
+            self.skills[skill] = data
+            self.put('dot_claude/skills/' + skill + '/SKILL.md', data)
+        self.git('add', '-A')
+        self.git('commit', '-qm', 'synthetic legacy baseline with other skills')
+        self.cm('apply', '--force')
+        return [s for s in self.skills if s != API['SKILLS'][0]], removed
+
+    def test_legacy_conversion_follows_the_skills_of_the_source(self):
+        names, removed = self.other_v1_skills()
+        self.assertEqual(len(names), len(API['SKILLS']) - 1)
+        legacy = self.state()
+        output = self.migration('plan')
+        self.assertEqual(legacy, self.state())
+        for skill in names:
+            self.assertIn(('SOURCE: .chezmoitemplates/ai/shared/skills/%s/SKILL.md create' % skill).encode(), output)
+            self.assertIn(('SOURCE: dot_claude/skills/%s/SKILL.md remove' % skill).encode(), output)
+        for skill in removed:
+            self.assertNotIn(skill.encode(), output)
+        self.migration('apply')
+        self.status()
+        self.local_in()
+        converted = self.state()
+        self.cm('apply', '--force')
+        self.assertEqual(converted, self.state())
+        for skill in names:
+            self.assertEqual((self.dst / ('.claude/skills/' + skill + '/SKILL.md')).read_bytes(), self.skills[skill])
+            self.assertFalse((self.src / ('dot_claude/skills/' + skill + '/SKILL.md')).exists())
+            self.assertEqual((self.src / ('dot_claude/skills/' + skill + '/SKILL.md.tmpl')).read_bytes(),
+                             API['wrapper']('dot_claude/skills/' + skill + '/SKILL.md.tmpl'))
+        for skill in removed:
+            self.assertFalse((self.src / ('.chezmoitemplates/ai/shared/skills/' + skill)).exists())
+            self.assertFalse((self.dst / ('.claude/skills/' + skill)).exists())
+        self.migration('verify')
+        # 接著擴充 Codex，再依相反順序復原
+        expansion = self.root / 'codex-expansion'
+        self.migration('plan', profile='claude-codex', backup=expansion)
+        self.migration('apply', profile='claude-codex', backup=expansion)
+        self.status('claude-codex')
+        for skill in names:
+            self.assertEqual((self.dst / ('.agents/skills/' + skill + '/SKILL.md')).read_bytes(), self.skills[skill])
+        self.migration('rollback', profile='claude-codex', backup=expansion)
+        self.assertEqual(converted, self.state())
+        self.migration('rollback')
+        self.assertEqual(legacy, self.state())
+
+    def test_legacy_conversion_still_refuses_payload_bad_names_and_front_matter(self):
+        self.other_v1_skills()
+        def refused(expected, label, backup):
+            before = self.state()
+            output = self.migration('plan', expected=expected, backup=self.root / backup)
+            self.assertIn(label, output)
+            self.assertEqual(before, self.state())
+            self.assertFalse((self.root / backup).exists())
+        extra = self.src / 'dot_claude/skills/sample-notes/helper.sh'
+        extra.write_bytes(b'unknown payload')
+        refused(66, b'BLOCKED_INVENTORY_MISMATCH', 'extra-payload')
+        extra.unlink()
+        # 沒有 SKILL.md 的目錄不是 skill，裡面的檔案是多餘的內容
+        self.put('dot_claude/skills/tools/run.sh', b'unknown payload')
+        refused(66, b'BLOCKED_INVENTORY_MISMATCH', 'directory-without-skill')
+        shutil.rmtree(self.src / 'dot_claude/skills/tools')
+        self.put('dot_claude/skills/Bad_Name/SKILL.md', b'---\nname: Bad_Name\ndescription: Fixture.\n---\n')
+        refused(65, b'INVALID_LAYOUT', 'bad-name')
+        shutil.rmtree(self.src / 'dot_claude/skills/Bad_Name')
+        path = self.src / 'dot_claude/skills/sample-notes/SKILL.md'
+        original = path.read_bytes()
+        path.write_bytes(original.replace(b'name: sample-notes', b'name: another-name'))
+        (self.dst / '.claude/skills/sample-notes/SKILL.md').write_bytes(path.read_bytes())
+        refused(66, b'BLOCKED_INVENTORY_MISMATCH', 'front-matter')
+
+
 if __name__ == '__main__':
     unittest.main()

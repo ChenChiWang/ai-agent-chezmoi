@@ -83,6 +83,31 @@ def source_skills(source, profile='claude-codex'):
     return skills_in(paths, profile)
 
 
+def legacy_skills(source):
+    """Skill set of a v1 source: every directory with a SKILL.md under dot_claude/skills."""
+    root = Path(source)
+    directory = root / 'dot_claude/skills'
+    if any(part.is_symlink() for part in (directory, *directory.parents) if part != root and root in part.parents):
+        raise ValueError('managed symlink')
+    if not directory.is_dir():
+        return skill_names(())
+    entries = os.listdir(directory)
+    if len(entries) > 4096:
+        raise ValueError('skill directory')
+    return skill_names(name for name in entries if os.path.lexists(directory / name / 'SKILL.md'))
+
+
+def legacy_files(skills=SKILLS):
+    return ('dot_claude/CLAUDE.md', 'dot_claude/settings.json', 'dot_claude/skills/dotfiles-sync/executable_sync.sh',
+            '.chezmoiignore', '.gitignore', '.gitattributes') + tuple(
+                'dot_claude/skills/' + s + '/SKILL.md' for s in skills)
+
+
+def legacy_targets(skills=SKILLS):
+    return ('.claude/CLAUDE.md', '.claude/settings.json', '.claude/skills/dotfiles-sync/sync.sh') + tuple(
+        '.claude/skills/' + s + '/SKILL.md' for s in skills)
+
+
 def mapping(profile, skills=SKILLS):
     if profile not in PROFILES:
         raise ValueError('invalid profile')
@@ -147,11 +172,7 @@ def decode_shared(content):
 
 
 SOURCE_FILES, TARGET_FILES = mapping('claude-codex')
-LEGACY_FILES = ('dot_claude/CLAUDE.md', 'dot_claude/settings.json',
-                'dot_claude/skills/dotfiles-sync/executable_sync.sh', '.chezmoiignore', '.gitignore', '.gitattributes') + tuple(
-                    'dot_claude/skills/' + s + '/SKILL.md' for s in SKILLS)
-LEGACY_TARGETS = ('.claude/CLAUDE.md', '.claude/settings.json', '.claude/skills/dotfiles-sync/sync.sh') + tuple(
-    '.claude/skills/' + s + '/SKILL.md' for s in SKILLS)
+LEGACY_FILES, LEGACY_TARGETS = legacy_files(), legacy_targets()
 LOCATIONS = frozenset(
     [scope + '/' + p for scope in ('source', 'index', 'head') for p in set(SOURCE_FILES + LEGACY_FILES)]
     + [scope + '/' + p for scope in ('target', 'render') for p in set(TARGET_FILES + LEGACY_TARGETS)]
@@ -242,10 +263,13 @@ def validate_layout(source, destination, profile, legacy=False, source_profile=N
     if any(overlaps(src, dst / region) for region in TARGET_REGIONS):
         raise ValueError('source overlaps deployment namespace')
     skills = source_skills(src, source_profile or profile)
+    if legacy:
+        # 轉換前後的兩種版面都要涵蓋：v1 的 skill 在 dot_claude/skills，v2 的在共用目錄
+        skills = skill_names(set(skills) | set(legacy_skills(src)))
     files, targets = mapping(profile, skills)
     if source_profile:
         files = mapping(source_profile, skills)[0]
-    paths = [(src, p) for p in set(files) | (set(LEGACY_FILES) if legacy else set())]
+    paths = [(src, p) for p in set(files) | (set(legacy_files(skills)) if legacy else set())]
     paths += [(dst, p) for p in targets]
     for root, relative in paths:
         rel = Path(relative)

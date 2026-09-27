@@ -488,7 +488,7 @@ class Engine:
         need(doc['source'] == str(self.src) and doc['destination'] == str(self.dst)
              and doc['profile'] == self.profile and doc['git'] == self.git_state(), 'BLOCKED_STALE_BASELINE', 68)
         need(doc['mode'] in ('legacy', 'enable-codex'), 'INVALID_BASELINE')
-        expected = set(files) | (set(api.LEGACY_FILES) if doc['mode'] == 'legacy' else set())
+        expected = set(files) | (set(api.legacy_files(self.base_skills)) if doc['mode'] == 'legacy' else set())
         need(set(doc['after']['source']) == expected, 'INVALID_BASELINE')
         for p, entry in doc['after']['source'].items():
             if entry is None:
