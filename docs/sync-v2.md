@@ -205,6 +205,10 @@ one wrapper per agent (`dot_claude/skills/<name>/SKILL.md.tmpl`,
 `dot_agents/skills/<name>/SKILL.md.tmpl`). The set is therefore still closed and
 enumerable at every commit; it just belongs to the commit instead of to the engine.
 A source without the skill directory uses the six template names.
+The converter follows the same rule for a later Codex expansion: `migration plan --mode
+enable-codex` reads the set from the source, and `apply`, `verify` and `rollback` read it
+from the approved manifest. The conversion from the v1 layout still expects the six
+template names.
 
 - Names match `[a-z0-9][a-z0-9-]*`, at most 64 characters and 64 skills. `dotfiles-sync`
   is the engine's own skill and is always part of the set. Any other name under the skill
