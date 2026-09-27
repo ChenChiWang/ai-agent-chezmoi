@@ -371,8 +371,10 @@ if __name__ == "__main__":
         # Unwind subprocess.run/TemporaryDirectory on normal termination.
         # SIGKILL cannot be handled; snapshots have owner-only permissions.
         raise KeyboardInterrupt()
-    for sig in (signal.SIGTERM, signal.SIGHUP):
-        signal.signal(sig, interrupted)
+    # SIGHUP 在部分平台（例如原生 Windows 的 Python）不存在；缺少時只處理 SIGTERM
+    for sig in (signal.SIGTERM, getattr(signal, 'SIGHUP', None)):
+        if sig is not None:
+            signal.signal(sig, interrupted)
     try:
         sys.exit(main())
     except (OSError, ValueError, KeyError, TypeError, RecursionError, ScanError, subprocess.SubprocessError, KeyboardInterrupt):

@@ -78,8 +78,14 @@ any existing `~/.claude/settings.json`, `~/.codex/AGENTS.md` or
 `~/.codex/AGENTS.override.md`. **ASK THE USER** whether to apply. Then:
 
 ```sh
-chezmoi apply
+chezmoi apply --no-tty
 ```
+
+Always pass `--no-tty` in an agent shell. Without a terminal, chezmoi's overwrite
+prompt (`<file> has changed since chezmoi last wrote it?`) waits forever and ignores
+SIGTERM. With `--no-tty` it stops at once with `EOF` and changes nothing. If that
+happens, show the user `chezmoi diff` for that file, and only after they approve the
+overwrite run `chezmoi apply --no-tty --force <file>`.
 
 ## Step 4B: create the private repository from this template
 
@@ -138,7 +144,7 @@ nothing from them was lost. Make sure the chezmoi `umask = 0o022` setting from S
 is in place. **ASK THE USER** whether to apply. Then:
 
 ```sh
-chezmoi apply
+chezmoi apply --no-tty      # see Step 4A for an EOF stop at an overwrite prompt
 gitleaks dir --no-banner --exit-code 10 "$SRC"
 ```
 
@@ -207,7 +213,8 @@ synced `~/.claude/settings.json`, which shows as `TARGET: .claude/settings.json 
 and `DRIFT`. Show the user the difference (`chezmoi cat ~/.claude/settings.json | diff -u
 - ~/.claude/settings.json`) and **ASK THE USER** whether to share it with every machine
 (copy the HOME file into the source's `dot_claude/settings.json`, then a reviewed push
-plan) or discard it (`chezmoi apply ~/.claude/settings.json`). Never decide this yourself.
+plan) or discard it (`chezmoi apply --no-tty --force ~/.claude/settings.json`, which
+overwrites the edited file after that approval). Never decide this yourself.
 
 ## Step 8: acceptance (optional, billed)
 
