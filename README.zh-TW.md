@@ -118,8 +118,10 @@ sh ~/.config/ai-agent/bin/sync.sh push --config ~/.config/ai-agent/sync.local.js
 注意：`plan` 與 `in`／`push` 之間不要對 source 跑 `git status`，否則 plan 會 `BLOCKED_STALE_PLAN`
 要重建。每個結果碼的意思與處理見 [`docs/new-machine.md` 第 7 節](./docs/new-machine.md)。
 
-互動模式的 Claude Code 每次執行 `sync.sh` 都會先問，除非 `settings.json` 的 `permissions.allow` 含
-`Bash(sh ~/.config/ai-agent/bin/sync.sh:*)`；[範例 settings](./examples/chezmoi/dot_claude/settings.json) 已包含。
+互動模式的 Claude Code 每次執行 `sync.sh` 都會先問，除非 `settings.json` 的 `permissions.allow` 預先允許。
+[範例 settings](./examples/chezmoi/dot_claude/settings.json) 只預先允許唯讀的子指令（`Bash(sh ~/.config/ai-agent/bin/sync.sh status:*)`、
+`check:*`、`doctor:*`、`plan:*`），所以開工檢查不會打擾你，`in` 與 `push` 則一定會先問。不要用涵蓋全部的
+`sync.sh:*`：它會讓寫入與發布不經詢問就執行，`doctor` 也會對它回報 WARN。
 
 ## 第一台機器（還沒有私有 repo）
 

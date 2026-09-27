@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(sh ~/.config/ai-agent/bin/sync.sh:*)"
+      "Bash(sh ~/.config/ai-agent/bin/sync.sh status:*)",
+      "Bash(sh ~/.config/ai-agent/bin/sync.sh check:*)",
+      "Bash(sh ~/.config/ai-agent/bin/sync.sh doctor:*)",
+      "Bash(sh ~/.config/ai-agent/bin/sync.sh plan:*)"
     ]
   }
 }

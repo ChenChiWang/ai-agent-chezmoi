@@ -124,7 +124,7 @@ machine-specific or secret.
 | --- | --- |
 | `~/.claude/CLAUDE.md` | Merge its rules into `SRC/.chezmoitemplates/ai/shared/instructions.md` under "Development rules". Keep the "Required memory checkpoints" section unchanged: it is what makes the agents sync. Rules that apply to one agent only go to `adapters/claude.md` or `adapters/codex.md`. |
 | `~/.codex/AGENTS.md` | Same treatment; rules shared by both agents go to the shared file once. |
-| `~/.claude/settings.json` | Propose copying it to `SRC/dot_claude/settings.json` and adding `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)` to `permissions.allow`. Say explicitly that it becomes a synced, scanned file; env values that look like tokens must stay out (they belong in `settings.local.json`, which is never synced). |
+| `~/.claude/settings.json` | Propose copying it to `SRC/dot_claude/settings.json` and adding the read-only sync rules from `examples/chezmoi/dot_claude/settings.json` (`status`, `check`, `doctor`, `plan`) to `permissions.allow`; never the broad `sync.sh:*` form, which would let `in`/`push` run without a prompt. Say explicitly that it becomes a synced, scanned file; env values that look like tokens must stay out (they belong in `settings.local.json`, which is never synced). |
 | `~/.claude/skills/<name>/` | The v2 skill set is fixed to the six names under `SRC/.chezmoitemplates/ai/shared/skills/`. A user skill with one of those names: propose replacing that `SKILL.md` with the user's version. Any other skill stays where it is and is not managed by v2; report that as a known limit, and never rename, add or delete skill directories. |
 
 Shared text is literal except for `{{`: a literal `{{` must be written as
@@ -192,10 +192,12 @@ This is the one situation in which an agent may write that file.
 sh ~/.config/ai-agent/bin/sync.sh doctor --config ~/.config/ai-agent/sync.local.json
 ```
 
-Repeat until there is no `FAIL`. `WARN settings` means Claude Code will prompt for
-the sync command each session; offer to add
-`Bash(sh ~/.config/ai-agent/bin/sync.sh:*)` to `permissions.allow` in the **source**
-`dot_claude/settings.json` (it is a synced file, so it goes through a reviewed push).
+Repeat until there is no `FAIL`. `WARN settings` means either that the read-only sync
+commands are not pre-allowed (Claude Code prompts every session) or that a broad rule such
+as `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)` lets `in`/`push` run without a prompt.
+Offer to set exactly the four read-only rules from `examples/chezmoi/dot_claude/settings.json`
+in the **source** `dot_claude/settings.json` (it is a synced file, so it goes through a
+reviewed push).
 
 ## Step 7: first sync checks
 
