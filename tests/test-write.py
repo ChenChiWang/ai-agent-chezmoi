@@ -1054,6 +1054,37 @@ sys.exit(10 if secret else 0)
         self.assertIn('PENDING_APPROVAL', self.raw(['in', '--config', config, '--plan', plan_file], expected=77))
         self.assertTrue(self.skill_targets(self.SKILL)[0].exists())
 
+    def test_doctor_reports_the_skill_set(self):
+        config = self.write_config()
+        def doctor():
+            return subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
+                                  capture_output=True, timeout=120, text=True)
+        self.assertIn('OK   skills: 6 in the source\n', doctor().stdout)
+        # 新增但還沒部署：集合有效，缺的是部署目標
+        self.add_skill(self.src)
+        result = doctor()
+        self.assertIn('OK   skills: 7 in the source, beyond the template: ' + self.SKILL, result.stdout)
+        self.assertIn('OK   source:', result.stdout)
+        self.assertIn('FAIL targets:', result.stdout)
+        self.assertEqual(result.returncode, 1)
+        self.replan()
+        self.execute()
+        result = doctor()
+        self.assertIn('OK   targets:', result.stdout)
+        for item in ('skills', 'source', 'targets'):
+            self.assertNotIn('FAIL ' + item, result.stdout)
+        # 少了包裝檔：集合有效，source 不完整
+        (self.src / self.skill_paths(self.SKILL)[2]).unlink()
+        result = doctor()
+        self.assertIn('OK   skills: 7', result.stdout)
+        self.assertIn('FAIL source:', result.stdout)
+        # 名稱不合法：集合本身無效
+        self.add_skill(self.src, 'Bad_Name')
+        result = doctor()
+        self.assertIn('FAIL skills: the skill set of the source is invalid', result.stdout)
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn('Traceback', result.stdout + result.stderr)
+
     def test_skill_set_change_rolls_back_created_and_removed_files(self):
         def change(root):
             self.add_skill(root)
