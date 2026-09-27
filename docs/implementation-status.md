@@ -3,6 +3,33 @@
 Current state only. Older round-by-round records are archived in
 [history/implementation-status-2026-09-25.md](history/implementation-status-2026-09-25.md).
 
+## 2026-09-26/27 — platforms, CI and mode hardening
+
+Driven by bringing a Windows 11 machine online (tracking issue #1, closed).
+
+- **Platforms.** `preflight` fails early on native Windows (#2) and warns when WSL
+  resolves a Windows-side agent CLI (#3). One real WSL2 Ubuntu 24.04 bring-up
+  (`claude` profile, path 4A): `doctor` 15 ok. `docs/wsl.md` records the WSL pitfalls,
+  the VS Code WSL route (the extension's bundled binary runs the start checkpoint
+  first, #12) and the native Windows follower (#14).
+- **CI** (#5, #14): every test except `session-acceptance.sh` on `ubuntu-24.04`,
+  `macos-15` and WSL2 Ubuntu 24.04 under umask `002`, plus the native Windows
+  follower end-to-end test. Actions are pinned by SHA.
+- **Modes** (#6, #9, #10, #11): execution uses the same effective mode as the plan;
+  modes stricter than `644`/`755` are kept, looser ones are listed in the plan
+  (`mode=664->644`) and tightened; `status` and `doctor` report them; bring-up sets
+  chezmoi `umask = 0o022`; migration explains a looser legacy `settings.json`.
+- **Checkpoints** (#7): a machine with neither parameter file nor engine skips them
+  silently; engine without parameter file is still reported as an incomplete bring-up.
+- **Permissions** (#13): only `status`, `check`, `doctor` and `plan` are pre-allowed;
+  `in` and `push` always prompt; `doctor` warns about the broad `sync.sh:*` rule.
+- **Phase 2 hardening** (#12): `chezmoi apply --no-tty` in the agent bring-up (without
+  a TTY the overwrite prompt waits forever and ignores SIGTERM), SIGHUP registered
+  only where it exists, golden Darwin/Linux preflight output with shimmed tools.
+- **First-launch drift** (#4): documented in `new-machine.md` and AGENT-SETUP.
+- Local results: under umask `022` and `002` all eight test files pass in WSL2;
+  `test-preflight.sh` passes in Git Bash; the follower test passes on native Windows.
+
 ## 2026-09-26 — architecture adjustment applied to the public tree
 
 - Executed items A–H of the [architecture adjustment plan](architecture-adjustment-plan.md);
@@ -49,4 +76,10 @@ Current state only. Older round-by-round records are archived in
 ## Not done here
 - Proactive skill invocation is verified only for the start checkpoint; the recording
   and end-of-work checkpoints have no scripted acceptance yet.
-- Codex 0.157.0 skill discovery was checked by binary inspection only.
+- Codex 0.157.0 skill discovery was checked by binary inspection only; Codex inside
+  WSL is unverified.
+- `tests/session-acceptance.sh` has not been re-run since the permission rules were
+  narrowed (#13).
+- Linux has no real-machine bring-up outside WSL yet.
+- Full native Windows sync (recording and publishing without WSL) is planned in #15,
+  with the pitfalls found so far and a phased plan.

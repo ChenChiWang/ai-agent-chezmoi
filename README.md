@@ -5,8 +5,8 @@
 Keep the **portable parts** of your Claude Code and Codex configuration (global
 instructions, skills, settings) in one chezmoi source, sync it to every machine you
 use, and let the agents themselves **sync safely at the start and end of work**: pull
-before starting, publish only after you approve. Verified on macOS, and once on
-Windows through WSL (Claude Code only); see [Requirements](#requirements) for platform support.
+before starting, publish only after you approve. Full sync runs on macOS, Linux and
+Windows through WSL; native Windows can follow the shared rules. See [Platforms](#platforms).
 
 ## Let an agent bring a machine up (recommended)
 
@@ -23,10 +23,11 @@ creates or joins the chezmoi source and summarizes the diff, derives the paramet
 file, runs the post-deployment `doctor`, and the first `status` and `check`.
 
 **Only you**: paste the SSH public key into GitHub, provide an empty private
-repository on the first machine, decide whether existing settings are overwritten or
-merged, choose `writer` and `auto_in` (see the parameter file below), and approve
-every push including the first one. The agent never uses sudo, never widens its
-sandbox and never approves on your behalf.
+repository on the first machine, run any step that needs sudo (for example upgrading
+Git on Ubuntu 24.04, or creating a normal user in WSL), decide whether existing
+settings are overwritten or merged, choose `writer` and `auto_in` (see the parameter
+file below), and approve every push including the first one. The agent never uses
+sudo, never widens its sandbox and never approves on your behalf.
 
 What the first machine adds: [First machine](#first-machine-no-private-repository-yet).
 The manual procedure and the result table are in [`docs/new-machine.md`](./docs/new-machine.md)
@@ -61,17 +62,34 @@ Credentials and MCP tokens are configured per machine.
 **Safety**: Gitleaks scan before every write; `in` and `push` go through a reviewable
 plan; `writer` decides which agent may publish; a plan is bound to the source state
 and is rebuilt when that changes; the engine never runs stash, reset, rebase or a
-force push.
+force push. Deployed files are `644`/`755` or stricter: a group- or world-writable
+file is listed in the plan and tightened. Only the read-only sync commands are
+pre-allowed, so `in` and `push` always go through Claude Code's permission prompt.
+
+## Platforms
+
+| Platform | What works | Evidence |
+|---|---|---|
+| macOS | full sync: bring-up, checkpoints, recording and publishing | real machines; CI `macos-15` |
+| Linux | full sync | CI `ubuntu-24.04` runs every test; the only real bring-up so far is inside WSL |
+| Windows through WSL2 | full sync, with Claude Code running inside WSL (the CLI, or the VS Code extension in a WSL window) | one real bring-up on WSL2 Ubuntu 24.04 with the `claude` profile; VS Code WSL mode verified; CI `windows-2025 (WSL2 Ubuntu 24.04)` under umask `002`; Codex unverified |
+| Native Windows | **follow only**: receive the shared rules into the Windows `~/.claude` with `setup/windows-follow.ps1` (preview, Gitleaks scan, then apply exactly what you saw); no recording or publishing, no engine | real machine; CI `windows-2025 (native follower)` |
+
+Native Windows (Git Bash included) cannot run the engine: it relies on POSIX
+permissions and executable bits, `os.getuid` and `/tmp`. Full native Windows sync is
+planned in [#15](https://github.com/ChenChiWang/ai-agent-chezmoi/issues/15). The
+Windows guide is [`docs/wsl.md`](./docs/wsl.md) (Traditional Chinese): WSL bring-up,
+VS Code, and the native follower in section 7.
 
 ## Requirements
 
 | Item | Requirement |
 |---|---|
-| Operating system | **macOS tested**. Linux: the code is POSIX and should work, but has no acceptance run yet. Windows: only through WSL, with Claude Code and Codex also running inside WSL (the Windows-side `~/.claude` is not managed); one bring-up verified on WSL2 Ubuntu 24.04 with the `claude` profile, Codex unverified. See [`docs/wsl.md`](./docs/wsl.md) (Traditional Chinese). Native Windows and Git Bash cannot run the engine (it relies on `/tmp`, POSIX permissions and executable bits, and `os.getuid`); a native Windows host can only follow the shared rules into its `~/.claude` with `setup/windows-follow.ps1` (see [`docs/wsl.md`](./docs/wsl.md), section 7). |
+| Operating system | macOS, Linux, or Windows through WSL2 for full sync; native Windows for follow-only (see [Platforms](#platforms)) |
 | Git | 2.45 or newer (`--no-lazy-fetch` support) |
-| chezmoi | 2.71 series tested |
+| chezmoi | 2.71 series tested; the machine-local `~/.config/chezmoi/chezmoi.toml` sets `umask = 0o022` (bring-up does this) so deployed modes do not follow the shell umask |
 | Python | 3.9 or newer, standard library only |
-| Gitleaks | **exactly 8.30.1** (`setup/install-gitleaks.sh` installs the pinned build into `~/.local/bin`) |
+| Gitleaks | **exactly 8.30.1** (`setup/install-gitleaks.sh`, or `setup/install-gitleaks.ps1` on native Windows, installs the pinned build into `~/.local/bin` and checks the official SHA-256) |
 | SSH | a key that can reach the private repository, host already in `known_hosts`; HTTPS with credentials is not supported |
 
 ## Parameter file `~/.config/ai-agent/sync.local.json`
@@ -145,6 +163,17 @@ so the start checkpoint runs without a prompt while `in` and `push` always ask. 
 use the broad `sync.sh:*` form: it lets writes and publication run unprompted, and
 `doctor` warns about it.
 
+On **native Windows** there is no engine; from a clone of this repository, follow the
+shared rules into `~/.claude` in two steps (details in [`docs/wsl.md`](./docs/wsl.md),
+section 7):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1                 # preview: changes nothing
+powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1 -Apply -Expect <REMOTE_HEAD>
+```
+
+Never run a plain `chezmoi apply` or `chezmoi update` there: it would deploy the engine.
+
 ## First machine (no private repository yet)
 
 The same sentence works: the agent takes path **4B** of `setup/AGENT-SETUP.md`. It
@@ -168,7 +197,7 @@ it over an existing agent configuration.
 |---|---|
 | [`setup/AGENT-SETUP.md`](./setup/AGENT-SETUP.md) | bring-up manual for an agent; each step marked "you do" or "ask the user" |
 | [`docs/new-machine.md`](./docs/new-machine.md) | bring-up and acceptance guide for humans, result-code table, cross-machine end-to-end test (zh-TW) |
-| [`docs/wsl.md`](./docs/wsl.md) | Windows through WSL: WSL-specific steps, known limits, verification record (zh-TW) |
+| [`docs/wsl.md`](./docs/wsl.md) | Windows: WSL bring-up, VS Code in WSL mode, the native follower, known limits, verification record (zh-TW) |
 | [`docs/sync-v2.md`](./docs/sync-v2.md) | engine contract: profiles, parameter file, roles, plans, locks, recovery |
 | [`docs/secret-scanner.md`](./docs/secret-scanner.md) | scanner contract and tests |
 | [`docs/production-layout.md`](./docs/production-layout.md) | safety boundaries when the source lives under HOME |

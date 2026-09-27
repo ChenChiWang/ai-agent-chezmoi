@@ -4,7 +4,8 @@
 
 把 Claude Code 與 Codex 的**可攜設定**（全域指示、skills、settings）放進一份 chezmoi source，
 同步到你的每一台機器，並讓 agent 自己在**開工與收工時安全地同步**：
-開工先拉最新、收工經你核准後才發布。目前在 macOS 驗證過，Windows 透過 WSL 驗證過一次（僅 Claude Code），平台支援見[需求](#需求)。
+開工先拉最新、收工經你核准後才發布。macOS、Linux 與透過 WSL 的 Windows 可以完整同步；原生 Windows
+可以跟隨共用規則。見[平台](#平台)。
 
 ## 讓 agent 幫你上線（推薦）
 
@@ -16,9 +17,10 @@
 提出缺少工具的安裝命令並在你確認後執行、釘版本安裝 Gitleaks 並核對官方 SHA-256、核對 GitHub 主機指紋、
 建立或接入 chezmoi source 並摘要 diff、推導參數檔內容、部署後自檢（`doctor`）、第一次 `status` 與 `check`。
 
-**只有這幾件事需要你**：把 SSH 公鑰貼到 GitHub、第一次建立時提供一個空的私有 repo、決定既有設定
-是否覆寫或怎麼併入、決定 `writer` 與 `auto_in`（見下方參數檔）、核准每一次 push（含第一次）。
-agent 不會用 sudo、不會放寬 sandbox、不會替你核准。
+**只有這幾件事需要你**：把 SSH 公鑰貼到 GitHub、第一次建立時提供一個空的私有 repo、執行需要 sudo
+的步驟（例如在 Ubuntu 24.04 升級 Git、在 WSL 建立一般使用者）、決定既有設定是否覆寫或怎麼併入、決定
+`writer` 與 `auto_in`（見下方參數檔）、核准每一次 push（含第一次）。agent 不會用 sudo、不會放寬
+sandbox、不會替你核准。
 
 第一次建立時會多做的事見[第一台機器](#第一台機器還沒有私有-repo)。人工流程與結果對照表見
 [`docs/new-machine.md`](./docs/new-machine.md)。
@@ -47,16 +49,31 @@ sessions／history／cache／plugins，以及任何 `*.key`、`*.pem`、`*.token
 
 **安全機制**：每次寫入前用 Gitleaks 掃描；`in`／`push` 都經過可審閱的 plan；`writer` 決定哪個 agent
 可以發布；plan 綁定 source 狀態，狀態變了就作廢重建；引擎不碰 stash、reset、rebase 或 force push。
+部署檔一律是 `644`／`755` 或更嚴格：group 或其他人可寫入的檔案會列在 plan 裡並收回。只預先允許唯讀的
+同步指令，所以 `in` 與 `push` 一定會經過 Claude Code 的權限確認。
+
+## 平台
+
+| 平台 | 能做什麼 | 依據 |
+|---|---|---|
+| macOS | 完整同步：上線、checkpoint、記錄與發布 | 實機；CI `macos-15` |
+| Linux | 完整同步 | CI `ubuntu-24.04` 執行全部測試；目前唯一的實機上線是在 WSL 內 |
+| Windows（透過 WSL2） | 完整同步，Claude Code 在 WSL 內執行（CLI，或以 WSL 模式開啟的 VS Code 擴充） | WSL2 Ubuntu 24.04 以 `claude` profile 實機上線一次；VS Code WSL 模式已驗證；CI `windows-2025 (WSL2 Ubuntu 24.04)`，umask `002`；Codex 尚未驗證 |
+| 原生 Windows | **只能跟隨**：用 `setup/windows-follow.ps1` 把共用規則套用到 Windows 端的 `~/.claude`（預覽、Gitleaks 掃描，再只套用你看過的版本）；不能記錄或發布，不部署引擎 | 實機；CI `windows-2025 (native follower)` |
+
+原生 Windows（包括 Git Bash）無法執行引擎：引擎依賴 POSIX 權限與執行位元、`os.getuid` 與 `/tmp`。
+原生 Windows 的完整同步規劃在 [#15](https://github.com/ChenChiWang/ai-agent-chezmoi/issues/15)。
+Windows 的說明見 [`docs/wsl.md`](./docs/wsl.md)：WSL 上線、VS Code，以及第 7 節的原生跟隨模式。
 
 ## 需求
 
 | 項目 | 要求 |
 |---|---|
-| 作業系統 | **macOS 已測**。Linux：程式碼為 POSIX，應可運作但尚未驗收。Windows：只能透過 WSL，且 Claude Code 與 Codex 都要在 WSL 內執行（Windows 端的 `~/.claude` 不會被管理）；已在 WSL2 Ubuntu 24.04 以 `claude` profile 完成一次上線驗證，Codex 尚未驗證，見 [`docs/wsl.md`](./docs/wsl.md)；原生 Windows 與 Git Bash 無法執行引擎（引擎依賴 `/tmp`、POSIX 權限與執行位元、`os.getuid`）；原生 Windows 只能用 `setup/windows-follow.ps1` 把共用規則跟隨套用到 `~/.claude`（見 [`docs/wsl.md`](./docs/wsl.md) 第 7 節）。 |
+| 作業系統 | 完整同步：macOS、Linux，或透過 WSL2 的 Windows；只跟隨：原生 Windows（見[平台](#平台)） |
 | Git | 2.45 以上（需支援 `--no-lazy-fetch`） |
-| chezmoi | 2.71 系列已測 |
+| chezmoi | 2.71 系列已測；本機的 `~/.config/chezmoi/chezmoi.toml` 要設定 `umask = 0o022`（上線流程會處理），部署權限才不會跟著 shell 的 umask |
 | Python | 3.9 以上，只用標準函式庫 |
-| Gitleaks | **必須是 8.30.1**（`setup/install-gitleaks.sh` 會釘版本安裝到 `~/.local/bin`） |
+| Gitleaks | **必須是 8.30.1**（`setup/install-gitleaks.sh`，原生 Windows 用 `setup/install-gitleaks.ps1`，會釘版本安裝到 `~/.local/bin` 並核對官方 SHA-256） |
 | SSH | 金鑰能存取私有 repo，主機已在 `known_hosts`；不支援帶憑證的 HTTPS |
 
 ## 參數檔 `~/.config/ai-agent/sync.local.json`
@@ -123,6 +140,16 @@ sh ~/.config/ai-agent/bin/sync.sh push --config ~/.config/ai-agent/sync.local.js
 `check:*`、`doctor:*`、`plan:*`），所以開工檢查不會打擾你，`in` 與 `push` 則一定會先問。不要用涵蓋全部的
 `sync.sh:*`：它會讓寫入與發布不經詢問就執行，`doctor` 也會對它回報 WARN。
 
+**原生 Windows** 沒有引擎；從這個 repo 的 clone 分兩步把共用規則跟隨套用到 `~/.claude`（細節見
+[`docs/wsl.md`](./docs/wsl.md) 第 7 節）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1                 # 預覽：不改任何東西
+powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1 -Apply -Expect <REMOTE_HEAD>
+```
+
+在那裡不要執行不帶路徑的 `chezmoi apply` 或 `chezmoi update`：它們會部署引擎。
+
 ## 第一台機器（還沒有私有 repo）
 
 同一句話也適用：agent 會走 `setup/AGENT-SETUP.md` 的 **4B** 路徑，以
@@ -141,7 +168,7 @@ sh ~/.config/ai-agent/bin/sync.sh push --config ~/.config/ai-agent/sync.local.js
 |---|---|
 | [`setup/AGENT-SETUP.md`](./setup/AGENT-SETUP.md) | 給 agent 的上線手冊，每步標明「agent 做」或「問使用者」 |
 | [`docs/new-machine.md`](./docs/new-machine.md) | 給人的上線與驗收指南、結果碼對照表、跨機器端到端測試 |
-| [`docs/wsl.md`](./docs/wsl.md) | Windows 透過 WSL 上線：WSL 特有步驟、已知限制、驗證紀錄 |
+| [`docs/wsl.md`](./docs/wsl.md) | Windows：WSL 上線、WSL 模式的 VS Code、原生跟隨模式、已知限制、驗證紀錄 |
 | [`docs/sync-v2.md`](./docs/sync-v2.md) | 引擎契約：profile、參數檔、角色、plan、lock、復原 |
 | [`docs/secret-scanner.md`](./docs/secret-scanner.md) | scanner 契約與測試 |
 | [`docs/production-layout.md`](./docs/production-layout.md) | source 位於 HOME 之下時的安全邊界 |
