@@ -24,6 +24,15 @@ def snap(root, paths):
     return {p: w.read(root / p, missing=True) for p in paths}
 
 
+def looser_hint(path, current, expected):
+    # 內容相同、只是權限比預期寬鬆（例如 umask 002 部署的 664）時，錯誤訊息直接附上解法（#8）
+    if (current is not None and expected is not None and current[0] == expected[0]
+            and current[1] & 0o777 & ~expected[1]):
+        return (': %s mode %o is looser than %o; set umask = 0o022 in ~/.config/chezmoi/chezmoi.toml, '
+                'run chezmoi apply, then plan again' % (path, current[1] & 0o777, expected[1]))
+    return ''
+
+
 def refs(values):
     return {p: None if v is None else [w.digest(v[0]), v[1]] for p, v in values.items()}
 
@@ -217,12 +226,14 @@ class Migration(w.Engine):
             old_render = self.render({p: source[p] for p in old_files})
             self.profile = old_engine_profile
             for path in old_targets:
-                w.need(target[path] == old_render[path], 'DRIFT', 2)
+                w.need(target[path] == old_render[path], 'DRIFT' + looser_hint(path, target[path], old_render[path]), 2)
             for path in set(self.targets) - set(old_targets):
                 w.need(target[path] is None, 'BLOCKED_TARGET_COLLISION', 66)
         rendered = self.render(candidate)
         # Strict byte/mode preservation for the existing Claude-only settings.
-        w.need(rendered['.claude/settings.json'] == target['.claude/settings.json'], 'BLOCKED_SETTINGS_MODE', 66)
+        settings = '.claude/settings.json'
+        w.need(rendered[settings] == target[settings],
+               'BLOCKED_SETTINGS_MODE' + looser_hint(settings, target[settings], rendered[settings]), 66)
         proposed = {p: candidate.get(p) for p in source_paths}
         self.scan_values(source, 'source')
         self.scan_values(target, 'target')
