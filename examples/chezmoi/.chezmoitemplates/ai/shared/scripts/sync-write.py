@@ -914,8 +914,17 @@ def doctor(args):
             settings = dst / '.claude/settings.json'
             try:
                 allow = json.loads(settings.read_text()).get('permissions', {}).get('allow', [])
-                rule = 'Bash(sh ~/.config/ai-agent/bin/sync.sh:*)'
-                report('OK' if rule in allow else 'WARN', 'settings', 'sync command ' + ('pre-allowed' if rule in allow else 'not in permissions.allow'), '' if rule in allow else 'add ' + rule + ' to permissions.allow to avoid a prompt per session')
+                # 只預先允許唯讀的子指令；in/push 要經過 Claude Code 的權限確認，不能被 :* 一併放行
+                prefix = 'Bash(sh ~/.config/ai-agent/bin/sync.sh'
+                broad = [r for r in allow if r in (prefix + ':*)', prefix + ' in:*)', prefix + ' push:*)')]
+                missing = [prefix + ' %s:*)' % c for c in ('status', 'check', 'doctor', 'plan') if prefix + ' %s:*)' % c not in allow]
+                if broad:
+                    report('WARN', 'settings', 'permissions.allow lets ' + ', '.join(broad) + ' run in/push without a prompt',
+                           'remove it and pre-allow only: ' + ', '.join(prefix + ' %s:*)' % c for c in ('status', 'check', 'doctor', 'plan')))
+                elif missing:
+                    report('WARN', 'settings', 'read-only sync commands not pre-allowed: ' + ', '.join(missing), 'add them to permissions.allow to avoid a prompt per session')
+                else:
+                    report('OK', 'settings', 'read-only sync commands pre-allowed; in/push prompt')
             except (OSError, ValueError, AttributeError):
                 report('WARN', 'settings', str(settings) + ' unreadable or not JSON', 'check the deployed Claude settings')
     if args.remote:

@@ -139,8 +139,11 @@ would return `BLOCKED_STALE_PLAN` and need rebuilding. Every result code and wha
 do about it is in [`docs/new-machine.md`, section 7](./docs/new-machine.md).
 
 Interactive Claude Code asks before each `sync.sh` run unless `permissions.allow` in
-`settings.json` contains `Bash(sh ~/.config/ai-agent/bin/sync.sh:*)`; the
-[example settings](./examples/chezmoi/dot_claude/settings.json) include it.
+`settings.json` pre-allows it. The [example settings](./examples/chezmoi/dot_claude/settings.json)
+pre-allow only the read-only subcommands (`Bash(sh ~/.config/ai-agent/bin/sync.sh status:*)`, `check:*`, `doctor:*` and `plan:*`),
+so the start checkpoint runs without a prompt while `in` and `push` always ask. Do not
+use the broad `sync.sh:*` form: it lets writes and publication run unprompted, and
+`doctor` warns about it.
 
 ## First machine (no private repository yet)
 

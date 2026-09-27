@@ -719,7 +719,16 @@ sys.exit(10 if secret else 0)
                                 capture_output=True, timeout=120, text=True)
         self.assertIn('OK   chezmoi_umask: 022', result.stdout)
         self.assertIn('WARN permissions: 1 group/other writable: .claude/CLAUDE.md', result.stdout)
+        self.assertIn('OK   settings: read-only sync commands pre-allowed; in/push prompt', result.stdout)
         (self.dst / '.claude/CLAUDE.md').chmod(0o644)
+        # 涵蓋全部子指令的 :* 規則會讓 in/push 不經確認就執行，必須回報
+        settings = self.dst / '.claude/settings.json'
+        original = settings.read_bytes()
+        settings.write_text(json.dumps({'permissions': {'allow': ['Bash(sh ~/.config/ai-agent/bin/sync.sh:*)']}}))
+        result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
+                                capture_output=True, timeout=120, text=True)
+        self.assertIn('WARN settings: permissions.allow lets Bash(sh ~/.config/ai-agent/bin/sync.sh:*) run in/push without a prompt', result.stdout)
+        settings.write_bytes(original)
         (self.dst / '.codex/AGENTS.md').unlink()
         result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
                                 capture_output=True, timeout=120, text=True)
