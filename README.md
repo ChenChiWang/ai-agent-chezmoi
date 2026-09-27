@@ -67,7 +67,7 @@ force push.
 
 | Item | Requirement |
 |---|---|
-| Operating system | **macOS tested**. Linux: the code is POSIX and should work, but has no acceptance run yet. Windows: only through WSL, with Claude Code and Codex also running inside WSL (the Windows-side `~/.claude` is not managed); one bring-up verified on WSL2 Ubuntu 24.04 with the `claude` profile, Codex unverified. See [`docs/wsl.md`](./docs/wsl.md) (Traditional Chinese). Native Windows and Git Bash are not supported (the engine hardcodes `/tmp`, POSIX permissions and executable bits, and `os.getuid`). |
+| Operating system | **macOS tested**. Linux: the code is POSIX and should work, but has no acceptance run yet. Windows: only through WSL, with Claude Code and Codex also running inside WSL (the Windows-side `~/.claude` is not managed); one bring-up verified on WSL2 Ubuntu 24.04 with the `claude` profile, Codex unverified. See [`docs/wsl.md`](./docs/wsl.md) (Traditional Chinese). Native Windows and Git Bash cannot run the engine (it relies on `/tmp`, POSIX permissions and executable bits, and `os.getuid`); a native Windows host can only follow the shared rules into its `~/.claude` with `setup/windows-follow.ps1` (see [`docs/wsl.md`](./docs/wsl.md), section 7). |
 | Git | 2.45 or newer (`--no-lazy-fetch` support) |
 | chezmoi | 2.71 series tested |
 | Python | 3.9 or newer, standard library only |
@@ -189,7 +189,8 @@ sh tests/session-acceptance.sh claude|codex      # fresh-session acceptance agai
 
 Commits and pushes happen only in temporary local fixtures; the tests never touch
 your private repository. CI ([`.github/workflows/tests.yml`](./.github/workflows/tests.yml)) runs
-all of them except `session-acceptance.sh` on Ubuntu 24.04, macOS 15 and WSL2 Ubuntu 24.04.
+all of them except `session-acceptance.sh` on Ubuntu 24.04, macOS 15 and WSL2 Ubuntu 24.04, plus
+the native Windows follower end-to-end test (`.github/ci/test-windows-follow.ps1`).
 
 ## Legacy v1
 
