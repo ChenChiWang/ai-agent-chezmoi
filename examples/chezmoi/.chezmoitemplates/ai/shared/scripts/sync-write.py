@@ -973,6 +973,15 @@ def doctor(args):
             report('WARN', 'plan_dir', 'not configured', 'add plan_dir to the parameter file')
     if args.source and args.destination:
         src, dst = Path(args.source), Path(args.destination)
+        # skill 集合由 source 的目錄決定；集合本身有問題時，後面的 layout 檢查只會說 invalid，這裡先講清楚
+        try:
+            skills = api.source_skills(src, args.repository_profile or args.profile)
+            added = [s for s in skills if s not in api.SKILLS]
+            report('OK', 'skills', '%d in the source%s' % (len(skills), (', beyond the template: ' + ', '.join(added)) if added else ''))
+        except (ValueError, OSError):
+            report('FAIL', 'skills', 'the skill set of the source is invalid',
+                   'under .chezmoitemplates/ai/shared/skills every directory with a SKILL.md needs a name matching '
+                   '[a-z0-9][a-z0-9-]*, and every wrapper under dot_claude/skills or dot_agents/skills needs its skill')
         try:
             api.validate_layout(src, dst, args.profile, source_profile=args.repository_profile)
             skills = api.source_skills(src, args.repository_profile or args.profile)
