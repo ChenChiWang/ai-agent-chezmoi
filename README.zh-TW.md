@@ -41,6 +41,13 @@ sandbox、不會替你核准。
 sessions／history／cache／plugins，以及任何 `*.key`、`*.pem`、`*.token`。完整清單見
 [`examples/chezmoi/.chezmoiignore`](./examples/chezmoi/.chezmoiignore)。憑證與 MCP token 每台機器各自設定。
 
+**MCP server 也不同步。**可攜的只有 server 的定義：執行檔、token 與 OAuth 狀態本來就必須存在於每台機器上，
+而且兩個產品都把使用者層級的定義放在自己會持續改寫的檔案裡（`~/.claude.json`、`~/.codex/config.toml`），
+由 source 產生的檔案無法接管。建議改在私有的 `shared/instructions.md` 放一份簡短的清單：預期要有哪些
+server、各自怎麼安裝、需要哪些環境變數的名稱（不寫值），agent 就能在需要的機器或專案上新增。這是 agent
+遵守的指示，不是引擎強制執行的檢查。claude.ai 帳號上設定的 connector 與專案自己的 `.mcp.json` 不屬於
+本機的使用者設定，這裡沒有需要同步的東西。
+
 **agent 的三個 checkpoint**（寫在共用指示裡，兩個 agent 都遵守）：
 
 1. **開工**：每個 session 第一回合先跑 `status` 與 `check`，落後就建 plan 套用（每天只真的探測遠端一次）。

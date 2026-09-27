@@ -50,6 +50,17 @@ One source renders the configuration of both agents:
 `*.token`. Full list in [`examples/chezmoi/.chezmoiignore`](./examples/chezmoi/.chezmoiignore).
 Credentials and MCP tokens are configured per machine.
 
+**MCP servers are not synced either.** Only a server's definition is portable: its
+executable, tokens and OAuth state have to exist on each machine anyway, and both
+products keep user-level definitions in files they rewrite themselves (`~/.claude.json`,
+`~/.codex/config.toml`), which a rendered source cannot own. Keep a short list in your
+private `shared/instructions.md` instead: the servers you expect, how to install each
+one, and the names (never the values) of the environment variables it needs. An agent
+can then add a server on the machine or project that needs it. This is an instruction
+the agent follows, not a check the engine enforces. Connectors configured on a
+claude.ai account and a project's own `.mcp.json` are not local user configuration, so
+there is nothing here to sync for them.
+
 **Three agent checkpoints** (written into the shared instructions, followed by both agents):
 
 1. **Start of work**: in the first turn of every session run `status` and `check`;
