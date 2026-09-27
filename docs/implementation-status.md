@@ -3,6 +3,29 @@
 Current state only. Older round-by-round records are archived in
 [history/implementation-status-2026-09-25.md](history/implementation-status-2026-09-25.md).
 
+## 2026-09-27 — the skill set belongs to the source
+
+Tracking issue #17. The set of synchronized skills was a tuple in the engine; adding a
+name to it left no way through for a machine that was already online.
+
+- **Engine** (#20): the set is read from each snapshot, one directory with a `SKILL.md`
+  per skill plus its two wrappers. Snapshots can mark a file as absent, transactions
+  create and remove files and roll both back, an existing target is adopted when
+  identical and refused when different (`BLOCKED_TARGET_COLLISION`), history is checked
+  per commit, and `auto_in` never applies a change of the set. With the six template
+  names the mapping, console output, plan document and `status` output are unchanged
+  (compared against the engine of `68d3ba8` in fixtures).
+- **Upgrade path**: an older engine plans and applies the engine update as an ordinary
+  incoming commit. The order, and the recovery of a machine that was left behind, are in
+  [sync-v2](sync-v2.md#upgrading-from-an-engine-with-the-fixed-list); both were run in
+  fixtures. `doctor` prints the skill set.
+- **One real machine**: macOS, profile `claude-codex`. The three scripts were published
+  from it through an approved push plan built by the older engine. Afterwards the new
+  engine reported `NO_CHANGES`, `UP_TO_DATE` and `doctor` without a failure. No skill
+  has been added or removed on a real machine yet.
+- **MCP** (#18, #19): not synchronized, by decision. The README explains why and
+  suggests a list in the private shared instructions.
+
 ## 2026-09-26/27 — platforms, CI and mode hardening
 
 Driven by bringing a Windows 11 machine online (tracking issue #1, closed).
@@ -74,6 +97,11 @@ Driven by bringing a Windows 11 machine online (tracking issue #1, closed).
   is documented as a known limit.
 
 ## Not done here
+- The skill set: no real machine has received the engine update through an incoming
+  plan yet, and none has added or removed a skill. The converter (`sync-migrate.py`)
+  still expects the six template names, so a later Codex expansion of a source with
+  more skills is refused. `setup/AGENT-SETUP.md` and the `dotfiles-sync` skill still
+  describe the set as fixed.
 - Proactive skill invocation is verified only for the start checkpoint; the recording
   and end-of-work checkpoints have no scripted acceptance yet.
 - Codex 0.157.0 skill discovery was checked by binary inspection only; Codex inside

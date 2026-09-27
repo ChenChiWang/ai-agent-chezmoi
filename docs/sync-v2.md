@@ -9,7 +9,7 @@ arbitrary legacy settings, hooks, skills, or other dotfiles.
 ## Profiles
 
 The engine supports `claude` (31 sources / 14 targets), `codex` (28 / 12) and
-`claude-codex` (39 / 21), plus `--repository-profile claude-codex` for full-repo
+`claude-codex` (39 / 21) with the six skills of the template, plus `--repository-profile claude-codex` for full-repo
 history/source scans with a single-agent target profile. The Phase 4 cohort/lease
 protocol (`DEFERRED_READERS`, receipts, kernel mutex) was removed from the engine on
 2026-09-26; its markers are refused (see below) and its records live in
@@ -117,7 +117,9 @@ confirmation remains a manual acceptance step.
 
 `doctor [--config FILE]` is read-only and prints one `OK` / `WARN` / `FAIL` line per
 check: Git with `--no-lazy-fetch`, chezmoi, Python, the pinned Gitleaks, the
-parameter file, `plan_dir`, mapped source files, deployed targets, leftover locks or
+parameter file, `plan_dir`, the skill set of the source (how many, and which ones are
+not in the template; `FAIL` when a name is invalid or a wrapper has no skill), mapped
+source files, deployed targets, leftover locks or
 journals, whether the deployed engine matches the running one, the Claude settings
 allow rule, `known_hosts` and an SSH probe for `ssh://` remotes, and the agent
 binaries for the profile. It exits 1 when any check fails. `setup/preflight.sh` is
@@ -238,11 +240,46 @@ applied, like any other source edit that is not deployed yet.
 which are not shared text, so it returns `PENDING_APPROVAL`. Later edits to the text of a
 skill that is already part of the set are shared text and apply automatically.
 
-Upgrading from an engine with the fixed list: the engine change touches only the scripts,
-which the older engine accepts as an ordinary incoming commit that needs explicit
-approval. Every machine has to apply that commit **before** the first change of the set
-is published. An older engine that receives a new skill returns
-`BLOCKED_OUT_OF_SCOPE_HISTORY` for the whole range.
+### Upgrading from an engine with the fixed list
+
+An engine from before this change has the six names built in. It accepts the engine
+update itself, because that commit touches only the scripts, but it refuses any range
+that contains a change of the set (`BLOCKED_OUT_OF_SCOPE_HISTORY`). So the order matters:
+
+1. On the publishing machine, copy `sync.sh`, `scan-secrets.py` and `sync-write.py` from
+   the public template into `.chezmoitemplates/ai/shared/scripts/` of the private source
+   and publish them with a push plan. `status` shows `DRIFT` between the edit and the
+   approved plan; that is expected.
+2. On every other machine, build an incoming plan and approve it. Scripts are not shared
+   text, so `auto_in` does not apply them. An engine whose `doctor` prints a `skills`
+   line has the capability.
+3. Only then publish the first added or removed skill.
+
+A machine that was left behind, so that its old engine now faces the engine update
+together with a change of the set, cannot get through with a plan. Replace its deployed
+engine by hand with the version the remote already has, then let that engine apply the
+range:
+
+```sh
+cd "$sync_source"
+git fetch --no-tags --no-write-fetch-head "$approved_remote_url" main:refs/ai-agent-recover/main
+for f in sync.sh scan-secrets.py sync-write.py sync-migrate.py gitleaks-rules.json; do
+  git show "refs/ai-agent-recover/main:.chezmoitemplates/ai/shared/scripts/$f" \
+    > "$sync_destination/.config/ai-agent/bin/$f"
+done
+git update-ref -d refs/ai-agent-recover/main
+```
+
+This moves neither `HEAD` nor the working tree, and `>` keeps the modes of the deployed
+files. It does put executable code from the remote in place without the scan and the
+plan, so do it yourself after looking at what changed, not through an agent. `status`
+then shows the source scripts as unchanged and the three deployed scripts as `changed`
+(`DRIFT`); the incoming plan accepts them because they equal what it is about to render,
+lists the pending commits and any `SKILL_ADDED` or `SKILL_REMOVED`, and the approved
+`in` brings the machine to `NO_CHANGES`.
+
+The native Windows follower does not run the engine and needs none of this. It deploys
+through chezmoi, so a new skill reaches `~/.claude` with the next follow.
 
 ## Incoming and outgoing behavior
 
