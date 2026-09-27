@@ -259,6 +259,18 @@ sys.exit(10 if secret else 0)
         self.migration('plan', expected=2)
         self.assertEqual(before, self.state())
 
+    def test_looser_settings_mode_blocks_with_umask_hint(self):
+        # umask 002 部署的 legacy settings.json 仍然擋下（嚴格保留），但訊息要指出 chezmoi umask 的解法（#8）
+        (self.dst / '.claude/settings.json').chmod(0o664)
+        before = self.state()
+        result = self.migration('plan', expected=66)
+        self.assertIn(b'BLOCKED_SETTINGS_MODE: .claude/settings.json mode 664 is looser than 644; set umask = 0o022', result)
+        self.assertEqual(before, self.state())
+        # 真正的內容 drift 不附提示，避免誤導成權限問題
+        (self.dst / '.claude/settings.json').chmod(0o644)
+        (self.dst / '.claude/CLAUDE.md').write_bytes(b'unsaved local preference')
+        self.assertNotIn(b'looser', self.migration('plan', expected=2))
+
     def test_source_secret_and_scanner_failure(self):
         p = self.src / 'dot_claude/skills/review/SKILL.md'
         p.write_bytes(p.read_bytes() + b'SYNTHETIC_TEST_SECRET\n')
