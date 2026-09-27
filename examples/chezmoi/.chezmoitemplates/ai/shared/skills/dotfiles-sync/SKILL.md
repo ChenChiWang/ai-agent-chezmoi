@@ -65,9 +65,18 @@ this skill does not detect all native/IDE sessions.
 
 The synchronized skills are the directories under
 `.chezmoitemplates/ai/shared/skills/` of the source that contain a `SKILL.md`. A skill
-steers how agents behave on every machine, so add or remove one **only when the user
-asks for that skill by name**. Never do it to record a memory, and never because a
-skill you found on the machine looks useful.
+steers how agents behave on every machine, so the user decides which skills exist and
+what they say.
+
+You may **suggest**. When the work shows that a new skill would help, that an existing
+one is unclear, out of date or regularly worked around, or that one is no longer used,
+say so: what you noticed, what you would change, and why. Do it at a natural pause, such
+as the finish checkpoint, not in the middle of unrelated work, and do not repeat a
+suggestion the user declined. Change the source **only after the user agrees to that
+specific suggestion**. Never make the change first and report it afterwards, and never
+add a skill merely because you found it on the machine. An edit to the text of an
+existing skill follows the "During work" rules below; the steps here are for adding or
+removing one.
 
 A skill is one `SKILL.md`. Its directory name matches `[a-z0-9][a-z0-9-]*` and equals
 the `name` in its front matter. A skill that needs further files is not supported: say
