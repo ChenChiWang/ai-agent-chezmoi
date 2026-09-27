@@ -176,6 +176,7 @@ rollback，另見 [migration readiness](./docs/history/migration-readiness.md)�
 
 | 文件 | 內容 |
 |---|---|
+| [`AGENTS.md`](./AGENTS.md) | 在這個 repo 工作的規則：什麼屬於這裡、GitHub 流程、測試；`CLAUDE.md` 引用它（英文） |
 | [`setup/AGENT-SETUP.md`](./setup/AGENT-SETUP.md) | 給 agent 的上線手冊，每步標明「agent 做」或「問使用者」 |
 | [`docs/new-machine.md`](./docs/new-machine.md) | 給人的上線與驗收指南、結果碼對照表、跨機器端到端測試 |
 | [`docs/wsl.md`](./docs/wsl.md) | Windows：WSL 上線、WSL 模式的 VS Code、原生跟隨模式、已知限制、驗證紀錄 |
