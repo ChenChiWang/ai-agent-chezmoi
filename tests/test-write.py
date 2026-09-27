@@ -833,5 +833,257 @@ sys.exit(10 if secret else 0)
                                         capture_output=True).stdout.strip(), b'claude,codex')
 
 
+    # ---- skill 集合由 source 的目錄決定：新增、移除、碰撞與收編 ----
+
+    SKILL = 'sample-notes'
+
+    def skill_paths(self, name):
+        return ['.chezmoitemplates/ai/shared/skills/%s/SKILL.md' % name,
+                'dot_claude/skills/%s/SKILL.md.tmpl' % name, 'dot_agents/skills/%s/SKILL.md.tmpl' % name]
+
+    def skill_targets(self, name):
+        return [self.dst / home / 'skills' / name / 'SKILL.md' for home in ('.claude', '.agents')]
+
+    def add_skill(self, root, name=SKILL):
+        body = ('---\nname: %s\ndescription: Fixture skill.\n---\n\nFixture body.\n' % name).encode()
+        wrapper = ('{' * 2 + ' template "ai/shared/skills/%s/SKILL.md" . -' % name + '}' * 2 + '\n').encode()
+        for rel, content in zip(self.skill_paths(name), (body, wrapper, wrapper)):
+            (root / rel).parent.mkdir(parents=True)
+            (root / rel).write_bytes(content)
+        return body
+
+    def remove_skill(self, root, name):
+        for rel in self.skill_paths(name):
+            shutil.rmtree((root / rel).parent)
+
+    def publish_from_other(self, change, message):
+        other = self.root / 'other'
+        if not other.exists():
+            self.git(self.root, 'clone', '-b', 'main', str(self.remote), str(other))
+        change(other)
+        self.git(other, 'add', '-A')
+        self.git(other, 'commit', '-qm', message)
+        self.git(other, 'push', str(self.remote), 'main')
+        return other
+
+    def replan(self, operation='push', expected=0):
+        self.planfile.unlink(missing_ok=True)
+        return self.plan(operation, expected).decode()
+
+    def skill_status(self, expected=0):
+        return self.raw(['status', '--source', self.src, '--destination', self.dst, '--scanner', self.scanner], expected)
+
+    def test_skill_added_locally_is_published_and_deployed(self):
+        body = self.add_skill(self.src)
+        output = self.skill_status(expected=2)
+        self.assertIn('SOURCE: %s staged=clean working=changed' % self.skill_paths(self.SKILL)[0], output)
+        self.assertIn('TARGET: .agents/skills/%s/SKILL.md missing' % self.SKILL, output)
+        before = self.state()
+        output = self.replan()
+        self.assertEqual(before, self.state())
+        self.assertIn('SKILL_ADDED: ' + self.SKILL, output)
+        self.assertNotIn('SKILL_REMOVED', output)
+        for rel in self.skill_paths(self.SKILL):
+            self.assertIn('SOURCE: %s before=absent after=' % rel, output)
+        self.assertIn('TARGET: .claude/skills/%s/SKILL.md sha256=%s created' % (self.SKILL, hashlib.sha256(body).hexdigest()), output)
+        self.execute()
+        self.assertEqual(self.git(self.src, 'rev-parse', 'HEAD'), self.git(self.remote, 'rev-parse', 'main'))
+        self.assertEqual(sorted(self.git(self.src, 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD').splitlines()),
+                         sorted(self.skill_paths(self.SKILL)))
+        self.assertEqual(self.git(self.src, 'status', '--porcelain'), '')
+        for target in self.skill_targets(self.SKILL):
+            self.assertEqual((target.read_bytes(), target.stat().st_mode & 0o777), (body, 0o644))
+        self.assertIn('NO_CHANGES', self.skill_status())
+        # 真正的 chezmoi 對同一份 source 產生的結果必須一樣
+        deployed = {str(p.relative_to(self.dst)): (p.read_bytes(), p.stat().st_mode) for p in self.dst.rglob('*') if p.is_file()}
+        self.apply()
+        self.assertEqual(deployed, {str(p.relative_to(self.dst)): (p.read_bytes(), p.stat().st_mode)
+                                    for p in self.dst.rglob('*') if p.is_file()})
+        # 之後修改內容是一般的共用文字變更
+        with (self.src / self.skill_paths(self.SKILL)[0]).open('a') as f:
+            f.write('\nLater edit.\n')
+        output = self.replan()
+        self.assertNotIn('SKILL_', output)
+        self.execute()
+        self.assertIn('Later edit.', self.skill_targets(self.SKILL)[1].read_text())
+
+    def test_skill_added_remotely_is_received(self):
+        bodies = []
+        self.publish_from_other(lambda root: bodies.append(self.add_skill(root)), 'fixture add skill')
+        before = self.state()
+        output = self.replan('in')
+        self.assertEqual(before, self.state())
+        self.assertIn('SKILL_ADDED: ' + self.SKILL, output)
+        self.assertIn('SOURCE: %s before=absent after=' % self.skill_paths(self.SKILL)[2], output)
+        self.assertIn('TARGET: .agents/skills/%s/SKILL.md sha256=' % self.SKILL, output)
+        self.execute('in')
+        self.assertEqual(self.git(self.src, 'rev-parse', 'HEAD'), self.git(self.remote, 'rev-parse', 'main'))
+        self.assertEqual(self.git(self.src, 'status', '--porcelain'), '')
+        for target in self.skill_targets(self.SKILL):
+            self.assertEqual(target.read_bytes(), bodies[0])
+        self.assertIn('NO_CHANGES', self.skill_status())
+
+    def test_skill_removed_locally_and_remotely(self):
+        self.remove_skill(self.src, 'review')
+        output = self.skill_status(expected=2)
+        self.assertIn('SOURCE: %s staged=clean working=removed' % self.skill_paths('review')[0], output)
+        self.assertIn('TARGET: .claude/skills/review/SKILL.md orphan', output)
+        output = self.replan()
+        self.assertIn('SKILL_REMOVED: review', output)
+        self.assertIn('SOURCE: %s before=' % self.skill_paths('review')[1], output)
+        self.assertIn('TARGET: .agents/skills/review/SKILL.md removed', output)
+        self.execute()
+        self.assertEqual(self.git(self.src, 'rev-parse', 'HEAD'), self.git(self.remote, 'rev-parse', 'main'))
+        self.assertEqual(self.git(self.src, 'ls-tree', '-r', '--name-only', 'HEAD', '--', *self.skill_paths('review')), '')
+        for target in self.skill_targets('review'):
+            self.assertFalse(target.parent.exists())
+        self.assertTrue(self.skill_targets('deploy')[0].exists())
+        self.assertIn('NO_CHANGES', self.skill_status())
+        # 另一台機器移除另一個 skill；目錄裡有使用者自己的檔案時，只移除產生的檔案
+        note = self.skill_targets('deploy')[0].parent / 'notes.txt'
+        note.write_text('kept')
+        self.publish_from_other(lambda root: self.remove_skill(root, 'deploy'), 'fixture remove skill')
+        self.assertIn('SKILL_REMOVED: deploy', self.replan('in'))
+        self.execute('in')
+        self.assertFalse((self.src / self.skill_paths('deploy')[0]).exists())
+        self.assertEqual(self.git(self.src, 'status', '--porcelain'), '')
+        self.assertFalse(self.skill_targets('deploy')[0].exists())
+        self.assertEqual(note.read_text(), 'kept')
+        self.assertFalse(self.skill_targets('deploy')[1].parent.exists())
+
+    def test_skill_removal_keeps_a_modified_target(self):
+        target = self.skill_targets('review')[0]
+        target.write_text('edited by the user')
+        self.remove_skill(self.src, 'review')
+        before = self.state()
+        self.assertIn('DRIFT', self.replan(expected=2))
+        self.assertEqual(before, self.state())
+        self.assertEqual(target.read_text(), 'edited by the user')
+
+    def test_skill_target_adopted_when_identical_blocked_when_different(self):
+        body = self.add_skill(self.src)
+        claude, agents = self.skill_targets(self.SKILL)
+        claude.parent.mkdir(parents=True)
+        claude.write_bytes(b'an unmanaged skill with the same name')
+        before = self.state()
+        output = self.replan(expected=66)
+        self.assertIn('BLOCKED_TARGET_COLLISION: .claude/skills/%s/SKILL.md' % self.SKILL, output)
+        self.assertEqual(before, self.state())
+        claude.write_bytes(body)
+        claude.chmod(0o644)
+        output = self.replan()
+        self.assertNotIn('TARGET: .claude/skills/' + self.SKILL, output)
+        self.assertIn('TARGET: .agents/skills/%s/SKILL.md sha256=' % self.SKILL, output)
+        self.execute()
+        self.assertEqual((claude.read_bytes(), agents.read_bytes()), (body, body))
+        self.assertIn('NO_CHANGES', self.skill_status())
+
+    def test_skill_set_validation(self):
+        clean = self.state()
+        def attempt(prepare, expected, label, undo):
+            prepare()
+            before = self.state()
+            self.assertIn(label, self.replan(expected=expected))
+            self.assertEqual(before, self.state())
+            undo()
+            self.assertEqual(clean, self.state())
+        wrappers = [self.src / rel for rel in self.skill_paths(self.SKILL)[1:]]
+        def remove_added(name=self.SKILL):
+            for rel in self.skill_paths(name):
+                shutil.rmtree((self.src / rel).parent, ignore_errors=True)
+        # 名稱不合法
+        attempt(lambda: self.add_skill(self.src, 'Bad_Name'), 65, 'INVALID_LAYOUT', lambda: remove_added('Bad_Name'))
+        # 缺少包裝檔
+        attempt(lambda: (self.add_skill(self.src), wrappers[1].unlink()), 65, 'BLOCKED_LAYOUT', remove_added)
+        # 包裝檔內容不是固定的那一行
+        attempt(lambda: (self.add_skill(self.src), wrappers[0].write_text('{' * 2 + ' .chezmoi.homeDir ' + '}' * 2)),
+                65, 'UNSUPPORTED_TEMPLATE', remove_added)
+        # 只有包裝檔、沒有 skill 本體
+        def orphan():
+            wrappers[0].parent.mkdir(parents=True)
+            wrappers[0].write_text('orphan')
+        attempt(orphan, 65, 'INVALID_LAYOUT', remove_added)
+        # 遠端的 commit 新增了 skill 但沒有包裝檔
+        def incomplete(root):
+            self.add_skill(root)
+            shutil.rmtree((root / self.skill_paths(self.SKILL)[2]).parent)
+        self.publish_from_other(incomplete, 'fixture incomplete skill')
+        before = self.state()
+        self.assertIn('BLOCKED_LAYOUT', self.replan('in', expected=65))
+        self.assertEqual(before, self.state())
+
+    def test_skill_added_then_removed_in_incoming_history(self):
+        self.publish_from_other(lambda root: self.add_skill(root), 'fixture add skill')
+        self.publish_from_other(lambda root: self.remove_skill(root, self.SKILL), 'fixture remove skill')
+        self.publish_from_other(lambda root: (root / REL).write_text((root / REL).read_text() + '\nAfter both.\n'), 'fixture edit')
+        output = self.replan('in')
+        self.assertIn('COMMITS: 3', output)
+        self.assertNotIn('SKILL_', output)
+        self.execute('in')
+        self.assertEqual(self.git(self.src, 'rev-parse', 'HEAD'), self.git(self.remote, 'rev-parse', 'main'))
+        self.assertIn('After both.', (self.dst / '.claude/CLAUDE.md').read_text())
+        for target in self.skill_targets(self.SKILL):
+            self.assertFalse(target.parent.exists())
+        # 範圍外的路徑仍然被擋下，即使它放在 skill 的目錄裡
+        def extra(root):
+            (root / '.chezmoitemplates/ai/shared/skills/review/extra.md').write_text('out of scope')
+        self.publish_from_other(extra, 'fixture extra file')
+        self.assertIn('BLOCKED_OUT_OF_SCOPE_HISTORY', self.replan('in', expected=66))
+
+    def test_auto_in_never_applies_a_skill_set_change(self):
+        config = self.write_config(auto_in=True)
+        self.publish_from_other(lambda root: self.add_skill(root), 'fixture add skill')
+        plan_file, plan_id = self.auto_plan(config)
+        before = self.state()
+        output = self.raw(['in', '--config', config, '--plan', plan_file], expected=77)
+        self.assertIn('PENDING_APPROVAL', output)
+        self.assertEqual(before, self.state())
+        self.assertFalse(self.skill_targets(self.SKILL)[0].exists())
+        self.raw(['in', '--config', config, '--approve', plan_id])
+        self.assertTrue(self.skill_targets(self.SKILL)[0].exists())
+        # 集合不變、只改新 skill 的內容：屬於共用文字，自動套用
+        def edit(root):
+            with (root / self.skill_paths(self.SKILL)[0]).open('a') as f:
+                f.write('\nIncoming skill edit.\n')
+        self.publish_from_other(edit, 'fixture edit skill')
+        plan_file, plan_id = self.auto_plan(config)
+        self.assertIn('AUTO_IN', self.raw(['in', '--config', config, '--plan', plan_file]))
+        self.assertIn('Incoming skill edit.', self.skill_targets(self.SKILL)[1].read_text())
+        self.publish_from_other(lambda root: self.remove_skill(root, self.SKILL), 'fixture remove skill')
+        plan_file, plan_id = self.auto_plan(config)
+        self.assertIn('PENDING_APPROVAL', self.raw(['in', '--config', config, '--plan', plan_file], expected=77))
+        self.assertTrue(self.skill_targets(self.SKILL)[0].exists())
+
+    def test_skill_set_change_rolls_back_created_and_removed_files(self):
+        def change(root):
+            self.add_skill(root)
+            self.remove_skill(root, 'review')
+        self.publish_from_other(change, 'fixture add and remove')
+        module, engine = self.engine_instance()
+        engine.build()
+        before = self.state()
+        original = module.atomic
+        def injected(path, value):
+            # 在來源檔案寫到一半時失敗：目標的建立與移除都已經發生，必須全部復原
+            if path == self.src / self.skill_paths(self.SKILL)[2]:
+                raise OSError('injected failure')
+            return original(path, value)
+        with patch.object(module, 'atomic', side_effect=injected):
+            with self.assertRaises(OSError):
+                engine.execute()
+        # Transferred immutable Git objects may remain; nothing else may be left behind.
+        after = self.state()
+        for key, value in before.items():
+            self.assertEqual(after[key], value, key)
+        self.assertEqual([key for key in after if key not in before and '/.git/objects/' not in key], [])
+        for target in self.skill_targets(self.SKILL):
+            self.assertFalse(target.parent.exists())
+        for rel in self.skill_paths(self.SKILL):
+            self.assertFalse((self.src / rel).parent.exists())
+        self.assertTrue(all(target.exists() for target in self.skill_targets('review')))
+        self.assertFalse((self.src / '.git/ai-agent-sync-transaction').exists())
+        self.assertFalse((self.src / '.git/index.lock').exists())
+
+
 if __name__ == '__main__':
     unittest.main()

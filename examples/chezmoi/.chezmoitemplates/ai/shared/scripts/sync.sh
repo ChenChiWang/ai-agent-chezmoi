@@ -121,22 +121,47 @@ head=$(git_read rev-parse --verify HEAD 2>/dev/null) || {
 wrappers() {
   env -i PATH="$tool_path" HOME="$work/home" LC_ALL=C python3 "$formatter" --wrapper "$1" 2>/dev/null || fail 65 'UNSUPPORTED_TEMPLATE'
 }
-files=$(env -i PATH="$tool_path" HOME="$work/home" LC_ALL=C python3 "$formatter" --schema "$repository_profile" source 2>/dev/null) || fail 65 'INVALID_PROFILE'
+# The skill set is the source's own: every directory with a SKILL.md under the shared skill root.
+schema() {
+  env -i PATH="$tool_path" HOME="$work/home" LC_ALL=C python3 "$formatter" "$@" "$src" 2>/dev/null
+}
+files=$(schema --schema "$repository_profile" source) || fail 65 'INVALID_PROFILE'
+# Skills still at HEAD but gone from the working tree: a removal waiting to be published.
+retired= orphans=
+if [ -n "$head" ]; then
+  : > "$work/head-paths"
+  tab=$(printf '\t')
+  for base in .chezmoitemplates/ai/shared/skills dot_claude/skills dot_agents/skills; do
+    leaf=SKILL.md.tmpl; [ "$base" != .chezmoitemplates/ai/shared/skills ] || leaf=SKILL.md
+    git_read ls-tree "$head" -- "$base/" > "$work/head-tree" || fail 70 'GIT_ERROR: HEAD tree'
+    while IFS= read -r line; do
+      entry=$(git_read ls-tree "$head" -- "${line#*"$tab"}/$leaf" < /dev/null) || fail 70 'GIT_ERROR: HEAD tree'
+      [ -z "$entry" ] || printf '%s\n' "${line#*"$tab"}/$leaf" >> "$work/head-paths"
+    done < "$work/head-tree"
+  done
+  retired=$(schema --retired "$repository_profile" source < "$work/head-paths") || fail 65 'INVALID_SOURCE: skill set at HEAD'
+  orphans=$(schema --retired "$profile" target < "$work/head-paths") || fail 65 'INVALID_SOURCE: skill set at HEAD'
+fi
 changed=0
-for rel in $files; do
+for rel in $files $retired; do
   safe_path "$src/$rel" || fail 65 "INVALID_SOURCE: symlink: $rel"
-  [ -f "$src/$rel" ] && [ -r "$src/$rel" ] || fail 65 "INVALID_SOURCE: missing or unreadable: $rel"
+  gone=0
+  for item in $retired; do [ "$item" != "$rel" ] || gone=1; done
   parent=${rel%/*}; [ "$parent" != "$rel" ] || parent=.
-  mkdir -p "$work/source/$parent" "$work/scan/source/$parent"
-  out="$work/source/$rel"; snap="$work/scan/source/$rel"
-  cp "$src/$rel" "$out" || fail 70 "IO_ERROR: snapshot: $rel"
-  cp "$out" "$snap"
-  case "$rel" in *.tmpl)
-    wrappers "$rel" > "$work/expected"
-    cmp -s "$out" "$work/expected" || fail 65 "UNSUPPORTED_TEMPLATE: $rel" ;;
-    .chezmoitemplates/*)
-      env -i PATH="$tool_path" HOME="$work/home" LC_ALL=C python3 "$formatter" --validate-shared "$out" 2>/dev/null || fail 65 "UNSUPPORTED_TEMPLATE: delimiter in shared text: $rel" ;;
-  esac
+  out="$work/source/$rel"
+  if [ "$gone" = 0 ]; then
+    [ -f "$src/$rel" ] && [ -r "$src/$rel" ] || fail 65 "INVALID_SOURCE: missing or unreadable: $rel"
+    mkdir -p "$work/source/$parent" "$work/scan/source/$parent"
+    snap="$work/scan/source/$rel"
+    cp "$src/$rel" "$out" || fail 70 "IO_ERROR: snapshot: $rel"
+    cp "$out" "$snap"
+    case "$rel" in *.tmpl)
+      wrappers "$rel" > "$work/expected"
+      cmp -s "$out" "$work/expected" || fail 65 "UNSUPPORTED_TEMPLATE: $rel" ;;
+      .chezmoitemplates/*)
+        env -i PATH="$tool_path" HOME="$work/home" LC_ALL=C python3 "$formatter" --validate-shared "$out" 2>/dev/null || fail 65 "UNSUPPORTED_TEMPLATE: delimiter in shared text: $rel" ;;
+    esac
+  fi
 
   # Read only blob metadata/content; never run diff drivers or clean filters.
   entry=$(git_read ls-files --stage -- "$rel") || fail 70 'GIT_ERROR: index read'
@@ -164,11 +189,15 @@ for rel in $files; do
       git_read cat-file blob "$base_oid" > "$blob" || fail 70 'GIT_ERROR: HEAD blob'
     fi
   fi
-  oid=$(git_read hash-object --no-filters "$out") || fail 70 'GIT_ERROR: hash'
-  mode=100644; [ ! -x "$src/$rel" ] || mode=100755
+  oid= mode=
+  if [ "$gone" = 0 ]; then
+    oid=$(git_read hash-object --no-filters "$out") || fail 70 'GIT_ERROR: hash'
+    mode=100644; [ ! -x "$src/$rel" ] || mode=100755
+  fi
   staged=clean; local_state=clean
   [ "$base_oid:$base_mode" = "$index_oid:$index_mode" ] || staged=changed
   [ "$oid:$mode" = "$index_oid:$index_mode" ] || local_state=changed
+  [ "$gone" = 0 ] || local_state=removed
   if [ "$staged:$local_state" != clean:clean ]; then
     changed=1
     printf 'SOURCE: %s staged=%s working=%s\n' "$rel" "$staged" "$local_state" >> "$work/report"
@@ -178,7 +207,7 @@ done
 for rel in .chezmoiignore .gitignore .gitattributes; do rm -f "$work/source/$rel"; done
 
 drift=0
-targets=$(env -i PATH="$tool_path" HOME="$work/home" LC_ALL=C python3 "$formatter" --schema "$profile" target 2>/dev/null) || fail 65 'INVALID_PROFILE'
+targets=$(schema --schema "$profile" target) || fail 65 'INVALID_PROFILE'
 for rel in $targets; do
   safe_path "$dst/$rel" || fail 65 "INVALID_SOURCE: target symlink: $rel"
   env -i PATH="$tool_path" HOME="$work/home" LC_ALL=C \
@@ -205,6 +234,16 @@ for rel in $targets; do
   fi
   if [ "$state" != clean ]; then
     drift=1; printf 'TARGET: %s %s\n' "$rel" "$state" >> "$work/report"
+  fi
+done
+# A removed skill's output stays deployed until the removal is applied by an approved plan.
+for rel in $orphans; do
+  safe_path "$dst/$rel" || fail 65 "INVALID_SOURCE: target symlink: $rel"
+  if [ -e "$dst/$rel" ]; then
+    [ -f "$dst/$rel" ] && [ -r "$dst/$rel" ] || fail 65 "INVALID_SOURCE: target type or access: $rel"
+    mkdir -p "$work/scan/target/${rel%/*}"
+    cp "$dst/$rel" "$work/scan/target/$rel" || fail 70 "IO_ERROR: target snapshot: $rel"
+    drift=1; printf 'TARGET: %s orphan\n' "$rel" >> "$work/report"
   fi
 done
 

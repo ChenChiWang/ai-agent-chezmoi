@@ -190,7 +190,7 @@ class NestedWriteTests(write.WriteTests):
     def test_unsafe_mapping_and_scratch_root_rejected(self):
         function = api['validate_layout']
         for invalid in ('../outside', '/absolute'):
-            with patch.dict(function.__globals__, mapping=lambda _: ((invalid,), ())):
+            with patch.dict(function.__globals__, mapping=lambda *_: ((invalid,), ())):
                 with self.assertRaises(ValueError):
                     function(self.src, self.dst, 'claude')
         with self.assertRaises(ValueError):

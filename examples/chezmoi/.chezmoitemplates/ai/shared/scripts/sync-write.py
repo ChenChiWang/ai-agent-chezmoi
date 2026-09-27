@@ -38,11 +38,15 @@ class Block(Exception):
 # 封存的 Phase 4 cohort／lease 協定標記。任何一個存在都拒絕操作，留待人工檢視。
 COORDINATION_MARKERS = ('ai-agent-cohort.json', 'ai-agent-cohort.lock', 'ai-agent-launch-readers')
 
-# 純文字的共用來源：instructions、六個 skill、兩個 adapter。auto_in 只可自動套用這些檔案的變更。
+# 純文字的共用來源：instructions、兩個 adapter，以及每個 skill 的本體。auto_in 只可自動套用這些檔案的變更。
+# skill 集合的增減一定會動到包裝檔，包裝檔不在這裡，所以集合變動永遠需要明確核准。
 SHARED_TEXT = frozenset(
     [PREFIX + 'shared/instructions.md']
-    + [PREFIX + 'shared/skills/' + s + '/SKILL.md' for s in api.SKILLS]
     + [PREFIX + 'adapters/' + p + '.md' for p in ('claude', 'codex')])
+
+
+def shared_text(path):
+    return path in SHARED_TEXT or bool(api.skill_of(path, api.SKILL_SOURCES[:1]))
 
 
 class Diagnostics:
@@ -179,12 +183,13 @@ def text_file(data):
     data.decode('utf-8')
 
 
-def snapshot(root, paths):
-    return {p: read(root / p) for p in paths}
+def snapshot(root, paths, optional=()):
+    # optional：正在加入或移除的 skill 的路徑，檔案可以不存在（以 None 表示）
+    return {p: read(root / p, missing=p in optional) for p in paths}
 
 
 def summary(snap):
-    return {p: [digest(v[0]), v[1]] for p, v in snap.items()}
+    return {p: None if v is None else [digest(v[0]), v[1]] for p, v in snap.items()}
 
 
 def canonical_mode(mode):
@@ -192,7 +197,7 @@ def canonical_mode(mode):
 
 
 def normalized(snap):
-    return {p: (v[0], canonical_mode(v[1])) for p, v in snap.items()}
+    return {p: None if v is None else (v[0], canonical_mode(v[1])) for p, v in snap.items()}
 
 
 def effective_mode(current, canonical):
@@ -236,6 +241,27 @@ def atomic(path, value):
                 os.unlink(name)
 
 
+def place(path, value, made):
+    """Write, create or remove one file. Directories created here are appended to `made`."""
+    if value is None:
+        # 只有 skill 自己的檔案會被移除；目錄空了就一併移除，裡面還有別的檔案就保留
+        safe(path)
+        path.unlink()
+        if not any(path.parent.iterdir()):
+            path.parent.rmdir()
+            fsync_dir(path.parent.parent)
+        else:
+            fsync_dir(path.parent)
+        return
+    missing = [p for p in (path.parent, *path.parent.parents) if not p.exists()]
+    for directory in reversed(missing):
+        safe(directory)
+        directory.mkdir()
+        directory.chmod(0o755)
+        made.append(directory)
+    atomic(path, value)
+
+
 class Engine:
     def __init__(self, args, tmp):
         diagnostics.mark('initialize_engine')
@@ -245,6 +271,8 @@ class Engine:
         self.repository_profile = getattr(args, 'repository_profile', None) or self.profile
         need(set(self.files) <= set(api.mapping(self.repository_profile)[0]), 'INVALID_REPOSITORY_PROFILE')
         self.files = api.mapping(self.repository_profile)[0]
+        # 以上是範本預設的集合；build() 會換成這份 source 自己的 skill 集合
+        self.optional = frozenset()
         self.offline = getattr(args, 'offline', False)
         self.src, self.dst = layout(args)
         self.gd = self.src / '.git'
@@ -359,10 +387,30 @@ class Engine:
             entries[path] = (mode, kind, oid)
         return entries
 
+    def scope(self, skills):
+        return api.mapping(self.repository_profile, skills)[0], api.mapping(self.profile, skills)[1]
+
+    def skills(self, paths):
+        # 每個 snapshot 的 skill 集合由它自己的路徑決定；名稱不合法或包裝檔沒有對應的 skill 就擋下
+        try:
+            if isinstance(paths, Path):
+                return api.source_skills(paths, self.repository_profile)
+            return api.skills_in([p.decode('utf-8', 'replace') if type(p) is bytes else p for p in paths],
+                                 self.repository_profile)
+        except (ValueError, OSError):
+            raise Block(65, 'BLOCKED_LAYOUT: invalid skill name, or wrapper without its skill') from None
+
+    def select(self, *sets):
+        # 納入所有相關集合的路徑；只屬於部分集合的 skill，它的檔案可以不存在
+        union = api.skill_names(set().union(*sets))
+        changing = set(union) - set.intersection(*map(set, sets))
+        self.files, self.targets = self.scope(union)
+        self.optional = frozenset(p for p in self.files + self.targets if api.skill_of(p) in changing)
+
     def scoped(self, commit):
         entries = self.tree(commit)
         out = {}
-        for path in self.files:
+        for path in self.scope(self.skills(entries))[0]:
             need(path.encode() in entries, 'BLOCKED_LAYOUT')
             mode, kind, oid = entries[path.encode()]
             need(kind == 'blob' and mode in ('100644', '100755'), 'BLOCKED_LAYOUT')
@@ -406,13 +454,14 @@ class Engine:
         snap = {p: (api.decode_shared(v[0]), v[1]) if p.startswith('.chezmoitemplates/') else v
                 for p, v in snap.items()}
         result = {}
+        skills = self.skills(snap)
         products = ('claude', 'codex') if self.profile == 'claude-codex' else (self.profile,)
         for product in products:
             target = '.' + product + ('/CLAUDE.md' if product == 'claude' else '/AGENTS.md')
             result[target] = (api.BANNER + snap[PREFIX + 'shared/instructions.md'][0] + b'\n'
                               + snap[PREFIX + 'adapters/' + product + '.md'][0], 0o644)
             home = 'claude' if product == 'claude' else 'agents'
-            for skill in api.SKILLS:
+            for skill in skills:
                 result['.' + home + '/skills/' + skill + '/SKILL.md'] = (
                     snap[PREFIX + 'shared/skills/' + skill + '/SKILL.md'][0], 0o644)
         for name in SCRIPTS:
@@ -469,7 +518,9 @@ class Engine:
             need(len(parents) == 1, 'BLOCKED_MERGE_HISTORY', 66)
             before, after = self.tree(parents[0]), self.tree(oid)
             changed = {p for p in before.keys() | after.keys() if before.get(p) != after.get(p)}
-            need(changed and changed <= {p.encode() for p in self.files}, 'BLOCKED_OUT_OF_SCOPE_HISTORY', 66)
+            # 範圍是這個 commit 前後兩個集合的路徑：新增的 skill 在後者，移除的 skill 在前者
+            allowed = self.scope(self.skills(before))[0] + self.scope(self.skills(after))[0]
+            need(changed and changed <= {p.encode() for p in allowed}, 'BLOCKED_OUT_OF_SCOPE_HISTORY', 66)
             snap = self.scoped(oid)
             self.scan(snap)
             self.scan(self.render(snap), 'render')
@@ -480,8 +531,8 @@ class Engine:
                     ref=self.source_git('symbolic-ref', 'HEAD').decode().strip(),
                     index=summary({'index': read(self.gd / 'index')}),
                     config=summary({'config': read(self.gd / 'config')}),
-                    source=summary(snapshot(self.src, self.files)),
-                    target=summary(snapshot(self.dst, self.targets)))
+                    source=summary(snapshot(self.src, self.files, self.optional)),
+                    target=summary(snapshot(self.dst, self.targets, self.optional)))
         return result
 
     def clean_index(self):
@@ -500,15 +551,21 @@ class Engine:
 
     def build(self):
         diagnostics.mark('build_candidate')
+        local = self.skills(self.src)
+        self.base_skills = api.SKILLS if getattr(self.a, 'baseline', None) else self.skills(self.tree(self.head))
+        self.select(self.base_skills, local)
         self.before = self.state()
         need(self.before['head'] == self.head and self.before['ref'] == self.ref, 'BLOCKED_STALE_PLAN', 68)
         self.clean_index()
-        self.working = snapshot(self.src, self.files)
-        self.deployed = snapshot(self.dst, self.targets)  # Missing targets require separate migration.
+        need(all((self.src / p).exists() for p in self.scope(local)[0] if p in self.optional),
+             'BLOCKED_LAYOUT: skill without its wrappers')
+        self.working = snapshot(self.src, self.scope(local)[0])
+        # Missing targets require separate migration, except those of a skill being added or removed.
+        self.deployed = snapshot(self.dst, self.targets, self.optional)
         baseline = self.migration_baseline() if getattr(self.a, 'baseline', None) else self.scoped(self.head)
         self.scan(baseline)
         self.scan(self.working)
-        self.scan(self.deployed, 'target')
+        self.scan({p: v for p, v in self.deployed.items() if v is not None}, 'target')
         base_render = self.render(baseline)
         self.remote_head = self.head if self.offline else self.fetch()
         if self.a.operation == 'in':
@@ -524,10 +581,38 @@ class Engine:
             self.candidate = self.working
         rendered = self.render(self.candidate)
         self.scan(rendered, 'render')
+        self.skill_set = self.skills(self.candidate)
+        # 遠端新增的 skill：它的路徑到這裡才知道。納入範圍並記錄目前的狀態，之後的過期檢查才涵蓋得到。
+        added = [p for p in self.candidate if p not in self.files], [p for p in rendered if p not in self.targets]
+        if added[0] or added[1]:
+            incoming = snapshot(self.src, added[0], added[0]), snapshot(self.dst, added[1], added[1])
+            need(not any(incoming[0].values()), 'BLOCKED_LOCAL_CHANGES', 66)
+            existing = {p: v for p, v in incoming[1].items() if v is not None}
+            if existing:
+                self.scan(existing, 'target')
+            self.deployed.update(incoming[1])
+            self.files, self.targets = self.files + tuple(added[0]), self.targets + tuple(added[1])
+            self.optional = self.optional | frozenset(added[0] + added[1])
+            self.before['source'].update(summary(incoming[0]))
+            self.before['target'].update(summary(incoming[1]))
         for p in self.targets:
-            need(normalized({p: self.deployed[p]})[p] in (base_render[p], rendered[p]), 'DRIFT', 2)
-        self.rendered = {p: (v[0], effective_mode(self.deployed[p][1], v[1])) for p, v in rendered.items()}
+            current, old, new = normalized({p: self.deployed[p]})[p], base_render.get(p), rendered.get(p)
+            if new is None:
+                # 移除的 skill：目標必須還是上一次產生的內容，或已經不存在；被改過的檔案不刪
+                need(current in (None, old), 'DRIFT', 2)
+            elif old is None:
+                # 新增的 skill：目標不存在就建立，內容相同就收編，內容不同不覆寫
+                need(current in (None, new), 'BLOCKED_TARGET_COLLISION: ' + p + ' exists with different content', 66)
+            else:
+                need(current in (old, new), 'DRIFT', 2)
+        self.rendered = {p: None if p not in rendered else
+                         (rendered[p][0], effective_mode(self.deployed[p] and self.deployed[p][1], rendered[p][1]))
+                         for p in self.targets}
         self.git('read-tree', self.head)
+        for p in baseline:
+            if p not in self.candidate:
+                # 隔離的 Git 目錄沒有工作目錄，--force-remove 不能用；mode 0 的 index-info 會移除該項目
+                self.git('update-index', '--index-info', data=('0 ' + '0' * 40 + '\t' + p + '\n').encode())
         for p, (content, mode) in self.candidate.items():
             oid = self.git('hash-object', '-w', '--stdin', '--no-filters', data=content).decode().strip()
             self.git('update-index', '--add', '--cacheinfo', '100755' if mode & 0o111 else '100644', oid, p)
@@ -580,7 +665,7 @@ class Engine:
         journal = self.gd / 'ai-agent-sync-transaction'
         journal.mkdir(mode=0o700)
         diagnostics.transaction_started = True
-        backups, committed, ref_attempted = [], False, False
+        backups, committed, ref_attempted, made = [], False, False, []
         index_lock = self.gd / 'index.lock'
         acquired = False
         try:
@@ -592,25 +677,27 @@ class Engine:
                 f.flush()
                 os.fsync(f.fileno())
             need(self.state() == self.before, 'BLOCKED_STALE_PLAN', 68)
-            changes = [(p, v) for p, v in changes if read(p) != v]
+            # 值為 None 代表檔案不存在：舊值 None 是建立，新值 None 是移除。journal 裡對應的欄位是 null。
+            changes = [(p, v) for p, v in changes if read(p, missing=True) != v]
             changes.append((self.gd / 'index', (new_index, read(self.gd / 'index')[1])))
             manifest = []
             diagnostics.mark('backup_files')
             for n, (path, value) in enumerate(changes):
-                old = read(path)
-                atomic(journal / ('old-%d' % n), (old[0], 0o600))
-                atomic(journal / ('new-%d' % n), (value[0], 0o600))
+                old = read(path, missing=True)
+                for label, item in (('old', old), ('new', value)):
+                    if item is not None:
+                        atomic(journal / ('%s-%d' % (label, n)), (item[0], 0o600))
                 backups.append((path, value, old))
-                manifest.append(dict(path=str(path), old_mode=old[1], new_mode=value[1],
-                                     old_hash=digest(old[0]), new_hash=digest(value[0])))
+                manifest.append(dict(path=str(path), old_mode=old and old[1], new_mode=value and value[1],
+                                     old_hash=old and digest(old[0]), new_hash=value and digest(value[0])))
             record = dict(ref=self.ref, old_head=self.head, new_head=new_head, files=manifest)
             diagnostics.mark('write_manifest')
             atomic(journal / 'manifest.json', (encoded(record), 0o600))
             diagnostics.mark('apply_files')
             for n, (path, value) in enumerate(changes):
-                need(read(path) == ((journal / ('old-%d' % n)).read_bytes(), manifest[n]['old_mode']),
-                     'BLOCKED_STALE_PLAN', 68)
-                atomic(path, value)
+                recorded = manifest[n]['old_hash'] and ((journal / ('old-%d' % n)).read_bytes(), manifest[n]['old_mode'])
+                need(read(path, missing=True) == recorded, 'BLOCKED_STALE_PLAN', 68)
+                place(path, value, made)
             diagnostics.mark('update_ref')
             need(self.source_git('symbolic-ref', 'HEAD').decode().strip() == self.ref, 'BLOCKED_STALE_PLAN', 68)
             if new_head != self.head:
@@ -639,11 +726,18 @@ class Engine:
             diagnostics.mark('restore_files')
             for path, new, old in reversed(backups):
                 try:
-                    current = read(path)
+                    current = read(path, missing=True)
                     if current == old:
                         continue
                     need(current == new)
-                    atomic(path, old)
+                    place(path, old, [])
+                except BaseException as recovery_error:
+                    diagnostics.capture(recovery_error)
+                    recovered = False
+            for directory in reversed(made):
+                try:
+                    if directory.is_dir() and not any(directory.iterdir()):
+                        directory.rmdir()
                 except BaseException as recovery_error:
                     diagnostics.capture(recovery_error)
                     recovered = False
@@ -669,12 +763,14 @@ class Engine:
         if self.a.operation == 'in':
             changes = [(self.dst / p, v) for p, v in self.rendered.items()]
             if self.remote_head != self.head:
-                changes += [(self.src / p, (v[0], effective_mode(self.working[p][1], canonical_mode(v[1]))))
+                changes += [(self.src / p, (v[0], effective_mode(self.working[p][1] if p in self.working else None,
+                                                                 canonical_mode(v[1]))))
                             for p, v in self.candidate.items()]
+                changes += [(self.src / p, None) for p in self.working if p not in self.candidate]
                 new_index = (self.iso / 'index').read_bytes()
             else:
                 new_index = read(self.gd / 'index')[0]
-            if self.remote_head == self.head and all(read(p) == v for p, v in changes):
+            if self.remote_head == self.head and all(read(p, missing=True) == v for p, v in changes):
                 print('NO_CHANGES')
                 return
             if self.remote_head != self.head:
@@ -700,7 +796,7 @@ class Engine:
             self.transact(new_head, [(self.dst / p, v) for p, v in self.rendered.items()],
                           (self.iso / 'index').read_bytes())
         else:
-            changes = [(self.dst / p, v) for p, v in self.rendered.items() if read(self.dst / p) != v]
+            changes = [(self.dst / p, v) for p, v in self.rendered.items() if read(self.dst / p, missing=True) != v]
             if changes:
                 self.transact(new_head, changes, read(self.gd / 'index')[0])
                 applied = True
@@ -879,12 +975,15 @@ def doctor(args):
         src, dst = Path(args.source), Path(args.destination)
         try:
             api.validate_layout(src, dst, args.profile, source_profile=args.repository_profile)
-            files, targets = api.mapping(args.repository_profile or args.profile)
+            skills = api.source_skills(src, args.repository_profile or args.profile)
+            files = api.mapping(args.repository_profile or args.profile, skills)[0]
+            deployed = api.mapping(args.profile, skills)[1]
             missing = [p for p in files if not (src / p).is_file()]
             report('OK' if not missing else 'FAIL', 'source', '%s, %d/%d mapped files present' % (src, len(files) - len(missing), len(files)), '' if not missing else 'the private source is missing mapped files; check its layout')
-            missing = [p for p in api.mapping(args.profile)[1] if not (dst / p).is_file()]
-            report('OK' if not missing else 'FAIL', 'targets', '%d/%d deployed under %s' % (len(api.mapping(args.profile)[1]) - len(missing), len(api.mapping(args.profile)[1]), dst), '' if not missing else 'chezmoi apply (first deployment) or an approved in')
+            missing = [p for p in deployed if not (dst / p).is_file()]
+            report('OK' if not missing else 'FAIL', 'targets', '%d/%d deployed under %s' % (len(deployed) - len(missing), len(deployed), dst), '' if not missing else 'chezmoi apply (first deployment) or an approved in')
         except (ValueError, OSError):
+            deployed = api.mapping(args.profile)[1]
             report('FAIL', 'layout', 'source/destination layout invalid', 'check absolute paths, symlinks and that the source is a regular Git checkout')
         # chezmoi 沒設定 umask 時，部署權限跟著 shell 的 umask（002 會產生 664）。在 umask 000 下
         # 詢問，才不會把引擎自己的 077 誤判成已設定。
@@ -898,7 +997,7 @@ def doctor(args):
         else:
             report('WARN', 'chezmoi_umask', 'not set; deployed modes follow the shell umask' if mask == 0 else 'unknown or allows group/other write',
                    'add "umask = 0o022" to ~/.config/chezmoi/chezmoi.toml')
-        loose = [p for p in api.mapping(args.profile)[1]
+        loose = [p for p in deployed
                  if (dst / p).is_file() and not (dst / p).is_symlink() and stat.S_IMODE((dst / p).stat().st_mode) & 0o022]
         report('OK' if not loose else 'WARN', 'permissions',
                'no deployed file is group/other writable' if not loose else '%d group/other writable: %s' % (len(loose), ', '.join(loose[:3]) + (' ...' if len(loose) > 3 else '')),
@@ -1090,8 +1189,19 @@ def main():
                 with plan_path.open('xb') as output:
                     output.write(blob)
                 base = result['baseline'] if result['operation'] == 'push' else result['state']['source']
+                for label, names in (('SKILL_ADDED: ', set(engine.skill_set) - set(engine.base_skills)),
+                                     ('SKILL_REMOVED: ', set(engine.base_skills) - set(engine.skill_set))):
+                    for name in sorted(names):
+                        print(label + name)
                 for p in engine.files:
-                    before, after = base[p], result['candidate'][p]
+                    before, after = base.get(p), result['candidate'].get(p)
+                    if before is None or after is None:
+                        # 集合變動：push 時寫進 commit，in 只在遠端領先時寫入 source
+                        if before != after and (result['operation'] == 'push'
+                                                or result['remote_head'] != result['state']['head']):
+                            print('SOURCE: ' + p + ' before=' + (before[0] if before else 'absent') + ' after='
+                                  + (after[0] + ' mode=' + oct(canonical_mode(after[1])) if after else 'absent'))
+                        continue
                     if result['operation'] == 'push':
                         # commit 只記錄內容與執行位元，umask 造成的 664 不算變更
                         mode = canonical_mode(after[1])
@@ -1105,6 +1215,10 @@ def main():
                         print('SOURCE: ' + p + ' before=' + before[0] + ' after=' + after[0] + ' mode=' + oct(mode))
                 for p in engine.targets:
                     before, after = result['state']['target'][p], result['rendered'][p]
+                    if before is None or after is None:
+                        if before != after:
+                            print('TARGET: ' + p + (' removed' if after is None else ' sha256=' + after[0] + ' created'))
+                        continue
                     if after != before:
                         line = 'TARGET: ' + p + ' sha256=' + after[0]
                         if after[1] != before[1]:
@@ -1123,8 +1237,8 @@ def main():
                 need(read(plan_path)[0] == approved, 'BLOCKED_STALE_PLAN', 68)
                 need(0 <= time.time() - document['created'] < 3600, 'BLOCKED_EXPIRED_PLAN', 68)
                 if args.auto:
-                    changed = {p for p in engine.files if result['candidate'][p] != result['baseline'][p]}
-                    if not changed <= SHARED_TEXT:
+                    changed = {p for p in engine.files if result['candidate'].get(p) != result['baseline'].get(p)}
+                    if engine.skill_set != engine.base_skills or not all(shared_text(p) for p in changed):
                         print('PLAN_ID: ' + args.approve)
                         raise Block(77, 'PENDING_APPROVAL: plan changes files outside shared text; '
                                         'review and rerun with --approve PLAN_ID')
