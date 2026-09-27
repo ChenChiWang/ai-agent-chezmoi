@@ -39,9 +39,10 @@ reviews results. Never edit `writer` yourself; it is the user's choice per machi
 
 When the file sets `auto_in` to true, an `in` executed with `--plan PLAN_FILE` and
 no `--approve` is applied automatically **only** if the plan changes nothing but the
-shared text sources (instructions, the six skills, the two adapters). Any change to
-scripts, wrappers, settings or metadata returns `PENDING_APPROVAL` (exit 77) and needs
-an explicit `--approve PLAN_ID` after review. `push` never has an automatic mode.
+shared text sources (instructions, the text of skills that are already synchronized,
+the two adapters). Any change to scripts, wrappers, settings or metadata, and any added
+or removed skill, returns `PENDING_APPROVAL` (exit 77) and needs an explicit
+`--approve PLAN_ID` after review. `push` never has an automatic mode.
 
 ## Scope and safety
 
@@ -59,6 +60,42 @@ Any existing writer lock, recovery journal or archived coordination marker
 (`BLOCKED_UNSUPPORTED_COORDINATION`) remains binding. Never remove protection to make
 this workflow run. Known concurrent configuration use requires deferring application;
 this skill does not detect all native/IDE sessions.
+
+## Adding or removing a skill
+
+The synchronized skills are the directories under
+`.chezmoitemplates/ai/shared/skills/` of the source that contain a `SKILL.md`. A skill
+steers how agents behave on every machine, so add or remove one **only when the user
+asks for that skill by name**. Never do it to record a memory, and never because a
+skill you found on the machine looks useful.
+
+A skill is one `SKILL.md`. Its directory name matches `[a-z0-9][a-z0-9-]*` and equals
+the `name` in its front matter. A skill that needs further files is not supported: say
+so and leave it unmanaged. Read the text before it goes in: it becomes synchronized and
+scanned, so nothing secret or specific to one machine.
+
+To add `NAME`, create in the source:
+
+- `.chezmoitemplates/ai/shared/skills/NAME/SKILL.md`, the text itself;
+- `dot_claude/skills/NAME/SKILL.md.tmpl` and `dot_agents/skills/NAME/SKILL.md.tmpl`, one
+  per agent the repository serves. Do not write their content yourself. Take it from the
+  engine, once per wrapper path:
+  `python3 "${AI_AGENT_HOME:-$HOME/.config/ai-agent}/bin/scan-secrets.py" --wrapper dot_claude/skills/NAME/SKILL.md.tmpl`
+
+To remove it, delete the same files. Then run `status` (it reports the outputs as
+`missing`, or as `orphan` for a removal, until the plan is applied) and build a push
+plan. The plan names the change with `SKILL_ADDED` or `SKILL_REMOVED`. Show the user
+those lines with the rest of the plan and obtain approval of that plan.
+
+- `BLOCKED_TARGET_COLLISION`: a skill of that name is already installed on this machine
+  with other content. Do not overwrite, move or delete it. Show the user both versions
+  and let them decide which one is right.
+- `DRIFT` on a removal: the installed copy was edited. Show the edit; do not delete it.
+- Before the first added or removed skill is published, every machine that syncs this
+  repository needs an engine whose `doctor` prints a `skills` line. You cannot see the
+  other machines: ask the user to confirm, and do not publish on an assumption.
+- An incoming plan that adds or removes a skill is never applied automatically. Present
+  it like any other plan that needs approval.
 
 ## Three memory checkpoints
 
