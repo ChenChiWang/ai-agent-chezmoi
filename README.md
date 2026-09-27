@@ -208,6 +208,7 @@ it over an existing agent configuration.
 
 | Document | Content |
 |---|---|
+| [`AGENTS.md`](./AGENTS.md) | working in this repository: what belongs here, the GitHub workflow, tests; `CLAUDE.md` imports it |
 | [`setup/AGENT-SETUP.md`](./setup/AGENT-SETUP.md) | bring-up manual for an agent; each step marked "you do" or "ask the user" |
 | [`docs/new-machine.md`](./docs/new-machine.md) | bring-up and acceptance guide for humans, result-code table, cross-machine end-to-end test (zh-TW) |
 | [`docs/wsl.md`](./docs/wsl.md) | Windows: WSL bring-up, VS Code in WSL mode, the native follower, known limits, verification record (zh-TW) |
