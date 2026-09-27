@@ -112,8 +112,9 @@ git -C "$SRC" config user.email "EMAIL"
 ```
 
 Do not add files beyond the template to the source during bring-up, except a skill the
-user asks for in 4B.3. With the six skills of the template the mapping has 39 source
-files and 21 targets for `claude-codex`; each further skill adds three and two.
+user asks for in 4B.3. The template ships one skill, `dotfiles-sync`. With it the
+mapping has 24 source files and 11 targets for `claude-codex`; each further skill adds
+three and two.
 
 ### 4B.3 bring the user's existing configuration in
 
@@ -126,7 +127,7 @@ machine-specific or secret.
 | `~/.claude/CLAUDE.md` | Merge its rules into `SRC/.chezmoitemplates/ai/shared/instructions.md` under "Development rules". Keep the "Required memory checkpoints" section unchanged: it is what makes the agents sync. Rules that apply to one agent only go to `adapters/claude.md` or `adapters/codex.md`. |
 | `~/.codex/AGENTS.md` | Same treatment; rules shared by both agents go to the shared file once. |
 | `~/.claude/settings.json` | Propose copying it to `SRC/dot_claude/settings.json` and adding the read-only sync rules from `examples/chezmoi/dot_claude/settings.json` (`status`, `check`, `doctor`, `plan`) to `permissions.allow`; never the broad `sync.sh:*` form, which would let `in`/`push` run without a prompt. Say explicitly that it becomes a synced, scanned file; env values that look like tokens must stay out (they belong in `settings.local.json`, which is never synced). |
-| `~/.claude/skills/<name>/` | The template ships six skills under `SRC/.chezmoitemplates/ai/shared/skills/`. A user skill with one of those names: propose replacing that `SKILL.md` with the user's version. Any other skill stays where it is unless the user agrees to synchronize it. List the ones you found, say which ones you would suggest and why, and let the user choose; do not add one on your own. A skill that is a single `SKILL.md` with a name matching `[a-z0-9][a-z0-9-]*` can be added: copy it to `SRC/.chezmoitemplates/ai/shared/skills/<name>/SKILL.md` and create its two wrappers with `python3 SRC/.chezmoitemplates/ai/shared/scripts/scan-secrets.py --wrapper dot_claude/skills/<name>/SKILL.md.tmpl` (and the `dot_agents` one). A skill with further files or directories is not supported and stays unmanaged; report that as a known limit. Never rename or delete a skill directory in `~/.claude/skills/`. |
+| `~/.claude/skills/<name>/` | The template ships one skill, `dotfiles-sync`, which the engine needs; keep the template's text, also when the user has an older skill of that name. Every other skill is the user's own and stays where it is unless the user agrees to synchronize it. List the ones you found, say which ones you would suggest and why, and let the user choose; do not add one on your own. A skill that is a single `SKILL.md` with a name matching `[a-z0-9][a-z0-9-]*` can be added: copy it to `SRC/.chezmoitemplates/ai/shared/skills/<name>/SKILL.md` and create its two wrappers with `python3 SRC/.chezmoitemplates/ai/shared/scripts/scan-secrets.py --wrapper dot_claude/skills/<name>/SKILL.md.tmpl` (and the `dot_agents` one). A skill with further files or directories is not supported and stays unmanaged; report that as a known limit. Never rename or delete a skill directory in `~/.claude/skills/`. |
 
 Shared text is literal except for `{{`: a literal `{{` must be written as
 `{{ "{{" }}`, and any other Go template opener is rejected at render time.

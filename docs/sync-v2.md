@@ -8,8 +8,8 @@ arbitrary legacy settings, hooks, skills, or other dotfiles.
 
 ## Profiles
 
-The engine supports `claude` (31 sources / 14 targets), `codex` (28 / 12) and
-`claude-codex` (39 / 21) with the six skills of the template, plus `--repository-profile claude-codex` for full-repo
+The engine supports `claude` (21 sources / 9 targets), `codex` (18 / 7) and
+`claude-codex` (24 / 11) with the one skill of the template, plus `--repository-profile claude-codex` for full-repo
 history/source scans with a single-agent target profile. The Phase 4 cohort/lease
 protocol (`DEFERRED_READERS`, receipts, kernel mutex) was removed from the engine on
 2026-09-26; its markers are refused (see below) and its records live in
@@ -23,11 +23,11 @@ facilities provide structured snapshots, shared locks, isolated Git indexes,
 atomic file replacement and recovery records. There is one shared engine for
 both agents, and no new runtime Python package dependency.
 
-Profiles select a closed mapping: `claude` has 31 source files / 14 targets;
-`claude-codex` has 39 / 21. Always pass `--profile claude` for a Claude-only stage;
-the compatibility default is dual. These counts are for the six skills of the template;
-each further skill adds one shared source, one wrapper and one target per agent (see
-[skill set](#skill-set)). Both include the
+Profiles select a closed mapping: `claude` has 21 source files / 9 targets;
+`claude-codex` has 24 / 11. Always pass `--profile claude` for a Claude-only stage;
+the compatibility default is dual. These counts are for the template, which ships only
+`dotfiles-sync`; each further skill adds one shared source, one wrapper and one target
+per agent (see [skill set](#skill-set)). Both include the
 Claude-only settings. The scanner owns the mapping and wrapper schema consumed by
 shell/Python engines. Normal sync still rejects missing output files or source
 layout changes; the separate approved converter handles first deployment and staged
@@ -204,7 +204,8 @@ and the mapping for that snapshot is the fixed files plus, per skill, the shared
 one wrapper per agent (`dot_claude/skills/<name>/SKILL.md.tmpl`,
 `dot_agents/skills/<name>/SKILL.md.tmpl`). The set is therefore still closed and
 enumerable at every commit; it just belongs to the commit instead of to the engine.
-A source without the skill directory uses the six template names.
+The template ships one skill, `dotfiles-sync`, which the engine needs. Every other skill
+is the user's own. A source without the skill directory is treated as having that one.
 The converter follows the same rule in both modes. `migration plan` reads the set from
 the source: for `--mode legacy` that is every directory with a `SKILL.md` under
 `dot_claude/skills/` of the v1 layout, for `--mode enable-codex` the shared skill
