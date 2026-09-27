@@ -62,4 +62,44 @@ expect_line "^OK   claude: $test_root/linux-bin/claude$" 'WSL, Linux claude firs
 run_preflight Linux '' "$test_root/mnt/c/npm"
 expect_line "^OK   claude: $test_root/mnt/c/npm/claude$" 'not WSL, same path'
 
+# Golden output：所有外部工具都換成 shim、清空環境變數，macOS/Linux 的完整輸出必須逐字相同。
+# 任何會改變既有使用者看到的輸出的修改，都要在這裡明確更新預期內容。
+golden=$test_root/golden
+mkdir -p "$golden/bin" "$golden/home/.ssh"
+: > "$golden/home/.ssh/id_ed25519"
+cp "$test_root/bin/uname" "$golden/bin/uname"
+printf '#!/bin/sh\necho "git version 2.55.0"\n' > "$golden/bin/git"
+printf '#!/bin/sh\necho "chezmoi version v2.71.1, commit 0000000, built at 2026-07-20T00:00:00Z, built by goreleaser"\n' > "$golden/bin/chezmoi"
+printf '#!/bin/sh\necho 3.12.3\n' > "$golden/bin/python3"
+printf '#!/bin/sh\necho 8.30.1\n' > "$golden/bin/gitleaks"
+printf '#!/bin/sh\nexit 0\n' > "$golden/bin/ssh-keygen"
+printf '#!/bin/sh\necho "Hi fixture! You'"'"'ve successfully authenticated, but GitHub does not provide shell access." >&2\nexit 1\n' > "$golden/bin/ssh"
+chmod +x "$golden/bin/"*
+for os in Darwin Linux; do
+  set +e
+  env -i PATH="$golden/bin:/usr/bin:/bin" HOME="$golden/home" LC_ALL=C FAKE_UNAME_S=$os \
+    sh "$repo/setup/preflight.sh" --host example.invalid > "$golden/actual" 2>&1
+  rc=$?
+  set -e
+  sed "s#$golden#<root>#g" "$golden/actual" > "$golden/normalized"
+  cat > "$golden/expected" <<EOF
+platform: $os x86_64
+OK   git: 2.55.0 with --no-lazy-fetch
+OK   chezmoi: chezmoi version v2.71.1
+OK   python3: 3.12.3
+OK   gitleaks: 8.30.1 at <root>/bin/gitleaks
+OK   known_hosts: example.invalid present
+OK   ssh_auth: git@example.invalid accepts your key
+OK   ssh_identity: default identity file present
+WARN claude: not on PATH -> install Claude Code if this machine will run it
+WARN codex: not on PATH -> install Codex CLI if this machine will run it
+WARN chezmoi_source: <root>/home/.local/share/chezmoi not initialized -> chezmoi init <private remote> (then diff, then apply)
+WARN engine: not deployed -> chezmoi apply deploys it
+WARN params: no parameter file -> write it after apply, with writer/auto_in confirmed by the user
+PREFLIGHT: 0 fail, 5 warn
+EOF
+  diff -u "$golden/expected" "$golden/normalized" || { echo "golden preflight output changed on $os"; exit 1; }
+  [ "$rc" = 0 ] || { echo "golden preflight exited $rc on $os"; exit 1; }
+done
+
 echo 'OK preflight platform checks'
