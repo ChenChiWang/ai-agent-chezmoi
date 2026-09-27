@@ -472,24 +472,30 @@ class Engine:
             result['.claude/skills/dotfiles-sync/sync.sh'] = (snap[PREFIX + 'shared/scripts/legacy-sync.sh'][0], 0o755)
         return result
 
-    def migration_baseline(self):
+    def baseline_manifest(self):
         root = Path(getattr(self.a, 'baseline', '') or '/')
         need(self.offline and getattr(self.a, 'baseline_id', None), 'BLOCKED_MIGRATION_BASELINE', 66)
         raw = read(root / 'manifest.json')[0]
         need(digest(raw) == self.a.baseline_id, 'BLOCKED_STALE_BASELINE', 68)
         doc = api.read_json(root / 'manifest.json')
-        need(doc['schema'] == 1, 'INVALID_BASELINE')
+        need(type(doc) is dict and doc.get('schema') == 1 and type(doc.get('after')) is dict
+             and type(doc['after'].get('source')) is dict, 'INVALID_BASELINE')
+        return root, doc
+
+    def migration_baseline(self):
+        root, doc = self.baseline_manifest()
+        files = self.scope(self.base_skills)[0]
         need(doc['source'] == str(self.src) and doc['destination'] == str(self.dst)
              and doc['profile'] == self.profile and doc['git'] == self.git_state(), 'BLOCKED_STALE_BASELINE', 68)
         need(doc['mode'] in ('legacy', 'enable-codex'), 'INVALID_BASELINE')
-        expected = set(self.files) | (set(api.LEGACY_FILES) if doc['mode'] == 'legacy' else set())
+        expected = set(files) | (set(api.LEGACY_FILES) if doc['mode'] == 'legacy' else set())
         need(set(doc['after']['source']) == expected, 'INVALID_BASELINE')
         for p, entry in doc['after']['source'].items():
             if entry is None:
                 safe(self.src / p)
                 need(not (self.src / p).exists(), 'BLOCKED_INCOMPLETE_MIGRATION', 66)
         result = {}
-        for p in self.files:
+        for p in files:
             entry = doc['after']['source'][p]
             need(type(entry) is list and len(entry) == 2 and type(entry[0]) is str
                  and re.fullmatch('[0-9a-f]{64}', entry[0]) and type(entry[1]) is int
@@ -552,7 +558,9 @@ class Engine:
     def build(self):
         diagnostics.mark('build_candidate')
         local = self.skills(self.src)
-        self.base_skills = api.SKILLS if getattr(self.a, 'baseline', None) else self.skills(self.tree(self.head))
+        # 轉換後尚未 commit 時，基準是已核准的轉換清單，集合也從它讀出
+        self.base_skills = (self.skills(self.baseline_manifest()[1]['after']['source'])
+                            if getattr(self.a, 'baseline', None) else self.skills(self.tree(self.head)))
         self.select(self.base_skills, local)
         self.before = self.state()
         need(self.before['head'] == self.head and self.before['ref'] == self.ref, 'BLOCKED_STALE_PLAN', 68)
