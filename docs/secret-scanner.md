@@ -135,7 +135,8 @@ not supported, and text admission is not a general archive classifier. Findings
 are suspicions requiring review, not verification that a credential is live.
 
 Only the fixed profile/legacy snapshot union is admitted. Profile-specific operations
-select their active paths; the union includes all six skills, Claude settings and
+select their active paths; the union includes the skills of the template, the per-skill
+paths of any other validly named skill (see [skill set](sync-v2.md#skill-set)), Claude settings and
 the legacy files required for conversion. A clean result does not certify an entire
 private repository or its history. The v2 write helper now scans approved candidates and all outbound commits,
 including commit metadata, while preserving staged work by refusing it. See

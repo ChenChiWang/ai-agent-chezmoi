@@ -50,7 +50,8 @@ chezmoi apply
 sh ~/.config/ai-agent/bin/sync.sh doctor --config ~/.config/ai-agent/sync.local.json
 ```
 
-`doctor` 是唯讀的：檢查工具版本、參數檔、plan_dir、source 的 39 個 mapped 檔、21 個 target、
+`doctor` 是唯讀的：檢查工具版本、參數檔、plan_dir、source 的 skill 集合、mapped 檔與 target（範本的六個 skill 在 `claude-codex` 下是 39 個與 21 個，
+每多一個 skill 各加 3 個與 2 個）、
 known_hosts 與 SSH 連線、agent 二進位、settings 的允許規則、部署引擎是否與執行中的相同，
 以及 chezmoi 的 umask 設定（`chezmoi_umask`）和部署檔有沒有 group／other 可寫入（`permissions`）。
 沒有 FAIL 再進下一節；`chezmoi_umask` 或 `permissions` 的 WARN 照第 2 節設定 umask 後再 `chezmoi apply`。
