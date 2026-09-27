@@ -58,6 +58,20 @@ which -a claude     # 第一行應為 ~/.local/bin/claude
 WSL 版要另外登入：在 WSL 終端機執行一次 `claude`。Codex 同理要裝在 WSL 內，但目前尚未在 WSL
 上驗證。
 
+### 用 VS Code：不必另外裝 CLI
+
+VS Code 的 Claude Code 擴充在 WSL 模式下會自帶 Linux 版的執行檔
+（`~/.vscode-server/extensions/anthropic.claude-code-*/resources/native-binary/claude`），
+讀寫的是 WSL 的 `~/.claude`，所以同步的設定與開工檢查照常運作。
+
+1. 在 Ubuntu 終端機進入任一資料夾，執行 `code .`（或在 VS Code 按 `F1` →
+   `WSL: Connect to WSL`）。視窗左下角與標題要顯示 `WSL: Ubuntu`。
+2. 在擴充功能面板找到 Claude Code，按「Install in WSL: Ubuntu」：擴充在 WSL 裡要另外裝一次。
+3. 打開 Claude 面板並登入。
+
+用 Windows 模式開 VS Code（左下角沒有 `WSL`）時，擴充跑在 Windows，讀的是 Windows 端的
+`~/.claude`，不會同步。preflight 的 `claude` 檢查只看 PATH 上的 CLI，不會反映 VS Code 擴充。
+
 ## 4. SSH
 
 WSL 的 `~/.ssh` 跟 Windows 的是分開的。建議在 WSL 產生一把新的 key，不要複製 Windows 的私鑰：
@@ -70,8 +84,20 @@ WSL 的 `~/.ssh` 跟 Windows 的是分開的。建議在 WSL 產生一把新的 
 
 ## 5. 上線
 
-接著照 `setup/AGENT-SETUP.md` 走 4A（或第一台機器走 4B），然後 Step 5～7。預期結果跟其他平台
+WSL 裡還沒有 agent 時，最簡單的做法是**在 WSL 裡**開 agent 再說那一句上線指令，後面的流程就跟
+一般 Linux 完全相同：
+
+- **用 VS Code**：照第 3 節用 WSL 模式打開 VS Code、裝好擴充，在 Claude 面板裡說：
+  「Clone `https://github.com/ChenChiWang/ai-agent-chezmoi`，然後照 `setup/AGENT-SETUP.md`
+  把這台機器上線。」
+- **用終端機**：先照第 3 節在 WSL 裡安裝並登入 Claude Code CLI，在 Ubuntu 終端機執行 `claude`，
+  說同一句話。
+
+agent 會照 `setup/AGENT-SETUP.md` 走 4A（或第一台機器走 4B），然後 Step 5～7。需要 sudo 的步驟
+（第 1 節的使用者、第 2 節的 git）與把 SSH 公鑰貼到 GitHub 仍要你自己做。預期結果跟其他平台
 相同：`doctor` 沒有 FAIL、`status` 回傳 `NO_CHANGES`、`check` 回傳 `UP_TO_DATE`。
+
+不建議從 Windows 端的 agent 遠端操作 WSL 來上線：可以做到，但要處理第 6 節的引號問題。
 
 ## 6. 已知限制
 
@@ -98,3 +124,4 @@ WSL 的 `~/.ssh` 跟 Windows 的是分開的。建議在 WSL 產生一把新的 
 | 日期 | 環境 | 結果 |
 | --- | --- | --- |
 | 2026-09-26 | Windows 11 Pro 10.0.26200、WSL2 Ubuntu 24.04.1（kernel 6.18.33.2-microsoft-standard-WSL2）；git 2.55.0（PPA）、chezmoi 2.71.1、Python 3.12.3、Gitleaks 8.30.1、Claude Code 2.1.283；profile `claude`，repository profile `claude-codex`，路徑 4A | preflight 0 fail；`doctor` 13 ok／0 warn／0 fail；`status` `NO_CHANGES`；`check` `UP_TO_DATE`。Codex 與 `tests/session-acceptance.sh` 未驗證 |
+| 2026-09-27 | 同上機器；VS Code 1.137.0 以 WSL 模式開啟，WSL 內安裝 Claude Code 擴充 2.1.283（使用擴充自帶的 `native-binary/claude`） | 新對話的第一個工具呼叫就是開工檢查（`NO_CHANGES`、`CHECKED_TODAY`），之後才讀專案；session 紀錄寫在 WSL 的 `~/.claude/projects/` |
