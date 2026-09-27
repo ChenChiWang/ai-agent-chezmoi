@@ -167,7 +167,7 @@ powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1 -Apply -Expect
 skill 集合由 source 自己決定：`shared/skills/` 底下每個含有 `SKILL.md` 的目錄，加上它的兩個單行包裝檔。
 新增或移除 skill 和其他的 source 修改一樣，經過核准的 plan 發布與接收（見
 [skill set](./docs/sync-v2.md#skill-set)）。已知限制：一個 skill 只有一個 `SKILL.md`，帶有其他檔案的 skill
-維持不納管；從 v1 版面轉換時仍然預期範本的六個名稱；既有的 legacy v1 使用者若要保留轉換與
+維持不納管；既有的 legacy v1 使用者若要保留轉換與
 rollback，另見 [migration readiness](./docs/history/migration-readiness.md)。
 
 **不可**對本公開 repo 執行 `chezmoi init --apply`，也不可整包覆蓋現有 agent 設定。

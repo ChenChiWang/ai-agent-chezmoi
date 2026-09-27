@@ -23,9 +23,10 @@ name to it left no way through for a machine that was already online.
   from it through an approved push plan built by the older engine. Afterwards the new
   engine reported `NO_CHANGES`, `UP_TO_DATE` and `doctor` without a failure. No skill
   has been added or removed on a real machine yet.
-- **Converter**: a later Codex expansion (`--mode enable-codex`) reads the skill set
-  from the source, takes the wrappers of skills that the reference does not have from
-  the engine, and still refuses extra files, invalid names and existing Codex targets.
+- **Converter** (#24, #23): both modes read the skill set from the source, the v1
+  conversion from `dot_claude/skills/` and the later Codex expansion from the shared
+  skill directory. Wrappers of skills that the reference does not have come from the
+  engine. Extra files, invalid names and existing Codex targets are still refused.
   `apply`, `verify` and `rollback` read the set from the approved manifest, so a skill
   added after the conversion does not invalidate its backup. Run in fixtures only.
 - **Agent text** (#22): the `dotfiles-sync` skill and `setup/AGENT-SETUP.md` describe
@@ -106,9 +107,7 @@ Driven by bringing a Windows 11 machine online (tracking issue #1, closed).
 
 ## Not done here
 - The skill set: no real machine has received the engine update through an incoming
-  plan yet, and none has added or removed a skill. The conversion from the v1 layout
-  (`sync-migrate.py --mode legacy`) still expects the six template names (#23).
-  Whether an agent that reads the new skill text follows it has not been tested with a
+  plan yet, and none has added or removed a skill. Whether an agent that reads the new skill text follows it has not been tested with a
   real model.
 - Proactive skill invocation is verified only for the start checkpoint; the recording
   and end-of-work checkpoints have no scripted acceptance yet.
