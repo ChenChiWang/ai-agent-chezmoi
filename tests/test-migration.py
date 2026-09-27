@@ -18,6 +18,8 @@ REFERENCE = ROOT / 'examples/chezmoi'
 SCRIPTS = REFERENCE / '.chezmoitemplates/ai/shared/scripts'
 ENGINE = SCRIPTS / 'sync.sh'
 API = runpy.run_path(str(SCRIPTS / 'scan-secrets.py'))
+# 範本只附帶引擎自己的 skill；v1 夾具用的其他名稱是測試專用的，reference 裡沒有它們
+FIXTURE_SKILLS = API['SKILLS'] + ('sample-alpha', 'sample-beta', 'sample-braces')
 # 夾具的 Git 不做背景維護：commit、fetch、push 之後的自動維護會短暫留下
 # .git/objects/maintenance.lock，比對完整狀態的測試會因此時好時壞（#26）
 QUIET_GIT = dict(GIT_CONFIG_COUNT='3', GIT_CONFIG_KEY_0='maintenance.auto', GIT_CONFIG_VALUE_0='false',
@@ -50,10 +52,10 @@ class MigrationTests(unittest.TestCase):
         self.settings = b'{"model":"fixture-model","statusLine":{"type":"command","command":"printf fixture"},"tui":{"fixture":true}}\n'
         self.put('dot_claude/settings.json', self.settings)
         self.skills = {}
-        for skill in API['SKILLS']:
+        for skill in FIXTURE_SKILLS:
             data = ('---\nname: ' + skill + '\ndescription: Synthetic legacy fixture for ' + skill + '.\n---\n\n'
                     '# ' + skill + '\nPreserve the existing project-specific ' + skill + ' behavior.\n').encode()
-            if skill == 'd3-component':
+            if skill == 'sample-braces':
                 data += b'\n<Chart style={{ color: "red" }} />\nLiteral {{ output "sh" "-c" "exit 99" }} remains text.\n'
             self.skills[skill] = data
             self.put('dot_claude/skills/' + skill + '/SKILL.md', data)
@@ -165,7 +167,7 @@ sys.exit(10 if secret else 0)
         self.assertEqual((self.backup / 'index.before').read_bytes(), (self.src / '.git/index').read_bytes())
         # 3B/C: conversion and Claude-only cutover; no private production inputs.
         self.migration('apply')
-        for skill in API['SKILLS'][1:]:
+        for skill in FIXTURE_SKILLS[1:]:
             self.assertEqual((self.dst / ('.claude/skills/' + skill + '/SKILL.md')).read_bytes(), self.skills[skill])
             self.assertFalse((self.src / ('dot_claude/skills/' + skill + '/SKILL.md')).exists())
         rules = (self.dst / '.claude/CLAUDE.md').read_bytes()
@@ -209,7 +211,7 @@ sys.exit(10 if secret else 0)
         expanded = self.state()
         self.cm('apply', '--force')
         self.assertEqual(expanded, self.state())
-        for skill in API['SKILLS']:
+        for skill in FIXTURE_SKILLS:
             self.assertEqual((self.dst / ('.claude/skills/' + skill + '/SKILL.md')).read_bytes(),
                              (self.dst / ('.agents/skills/' + skill + '/SKILL.md')).read_bytes())
         for key, value in claude.items():
@@ -221,7 +223,7 @@ sys.exit(10 if secret else 0)
 
     def test_each_shared_skill_local_edit_render_and_scan(self):
         self.convert()
-        for skill in API['SKILLS'][1:]:
+        for skill in FIXTURE_SKILLS[1:]:
             p = self.src / ('.chezmoitemplates/ai/shared/skills/' + skill + '/SKILL.md')
             original = p.read_bytes()
             p.write_bytes(original + b'\nReviewed fixture update.\n')
@@ -246,7 +248,7 @@ sys.exit(10 if secret else 0)
         self.assertEqual(before, self.state())
 
     def test_unknown_skill_or_extra_payload_blocks(self):
-        self.put('dot_claude/skills/review/helper.sh', b'unknown payload')
+        self.put('dot_claude/skills/sample-alpha/helper.sh', b'unknown payload')
         before = self.state()
         self.migration('plan', expected=66)
         self.assertEqual(before, self.state())
@@ -277,9 +279,9 @@ sys.exit(10 if secret else 0)
         self.assertNotIn(b'looser', self.migration('plan', expected=2))
 
     def test_source_secret_and_scanner_failure(self):
-        p = self.src / 'dot_claude/skills/review/SKILL.md'
+        p = self.src / 'dot_claude/skills/sample-alpha/SKILL.md'
         p.write_bytes(p.read_bytes() + b'SYNTHETIC_TEST_SECRET\n')
-        (self.dst / '.claude/skills/review/SKILL.md').write_bytes(p.read_bytes())
+        (self.dst / '.claude/skills/sample-alpha/SKILL.md').write_bytes(p.read_bytes())
         before = self.state()
         self.migration('plan', expected=67)
         self.assertEqual(before, self.state())
@@ -356,7 +358,7 @@ sys.exit(10 if secret else 0)
         self.status()
         rng = random.Random(9245)
         secret = 'gh' + 'p_' + ''.join(rng.choices('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=36))
-        for skill in API['SKILLS'][1:]:
+        for skill in FIXTURE_SKILLS[1:]:
             p = self.src / ('.chezmoitemplates/ai/shared/skills/' + skill + '/SKILL.md')
             old = p.read_bytes()
             p.write_bytes(old + b'\n' + secret.encode() + b'\n')
@@ -418,7 +420,7 @@ sys.exit(10 if secret else 0)
         before = self.state()
         self.convert()
         self.assertIn(self.segments[0]['text'].encode(), (self.dst / '.claude/CLAUDE.md').read_bytes())
-        self.assertEqual((self.dst / '.claude/skills/d3-component/SKILL.md').read_bytes(), self.skills['d3-component'])
+        self.assertEqual((self.dst / '.claude/skills/sample-braces/SKILL.md').read_bytes(), self.skills['sample-braces'])
         self.status()
         after = self.state()
         self.cm('apply', '--force')
@@ -427,7 +429,7 @@ sys.exit(10 if secret else 0)
         self.assertEqual(before, self.state())
 
     def test_frontmatter_change_and_external_directory_are_preserved(self):
-        p = self.src / 'dot_claude/skills/review/SKILL.md'
+        p = self.src / 'dot_claude/skills/sample-alpha/SKILL.md'
         original = p.read_bytes()
         p.write_bytes(original.replace(b'description:', b'allowed-tools: Bash\ndescription:'))
         self.migration('plan', expected=66)
@@ -542,7 +544,7 @@ sys.exit(10 if secret else 0)
         expanded = self.state()
         self.cm('apply', '--force')
         self.assertEqual(expanded, self.state())
-        for skill in API['SKILLS'] + ('sample-notes',):
+        for skill in FIXTURE_SKILLS + ('sample-notes',):
             self.assertEqual((self.dst / ('.claude/skills/' + skill + '/SKILL.md')).read_bytes(),
                              (self.dst / ('.agents/skills/' + skill + '/SKILL.md')).read_bytes())
         self.assertEqual((self.dst / '.agents/skills/sample-notes/SKILL.md').read_bytes(), body)
@@ -600,25 +602,23 @@ sys.exit(10 if secret else 0)
 
     def other_v1_skills(self):
         # 把 v1 夾具換成另一組 skill：拿掉兩個範本名稱，加入兩個範本沒有的
-        removed, added = API['SKILLS'][1:3], ('sample-notes', 'sample-braces')
+        removed, added = FIXTURE_SKILLS[1:3], ('sample-notes', 'sample-gamma')
         for skill in removed:
             shutil.rmtree(self.src / 'dot_claude/skills' / skill)
             shutil.rmtree(self.dst / '.claude/skills' / skill)
             del self.skills[skill]
         for skill in added:
             data = ('---\nname: ' + skill + '\ndescription: Synthetic legacy fixture for ' + skill + '.\n---\n\n# ' + skill + '\n').encode()
-            if skill == 'sample-braces':
-                data += b'\n<Chart style={{ color: "red" }} />\nLiteral {{ output "sh" "-c" "exit 99" }} remains text.\n'
             self.skills[skill] = data
             self.put('dot_claude/skills/' + skill + '/SKILL.md', data)
         self.git('add', '-A')
         self.git('commit', '-qm', 'synthetic legacy baseline with other skills')
         self.cm('apply', '--force')
-        return [s for s in self.skills if s != API['SKILLS'][0]], removed
+        return [s for s in self.skills if s != FIXTURE_SKILLS[0]], removed  # sample-braces 留著，內容含字面大括號
 
     def test_legacy_conversion_follows_the_skills_of_the_source(self):
         names, removed = self.other_v1_skills()
-        self.assertEqual(len(names), len(API['SKILLS']) - 1)
+        self.assertEqual(len(names), len(FIXTURE_SKILLS) - 1)
         legacy = self.state()
         output = self.migration('plan')
         self.assertEqual(legacy, self.state())

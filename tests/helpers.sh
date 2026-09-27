@@ -11,6 +11,8 @@ src="$test_root/source 中文 space"
 dst="$test_root/destination 中文 space"
 mkdir -p "$src" "$dst" "$test_root/home" "$test_root/cache"
 cp -R "$repo/examples/chezmoi/." "$src/"
+# 範本只附帶引擎自己的 skill；測試需要的其他 skill 疊在上面
+cp -R "$repo/tests/fixtures/skills/." "$src/"
 # 與文件建議的本機設定一致，部署權限不受 shell umask 影響
 printf 'umask = 0o022\n' > "$test_root/config.toml"
 # 夾具的 Git 不做背景維護：自動維護會短暫留下 .git/objects/maintenance.lock，

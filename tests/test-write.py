@@ -18,6 +18,8 @@ import unittest
 REPO = Path(__file__).resolve().parents[1]
 ENGINE = REPO / 'examples/chezmoi/.chezmoitemplates/ai/shared/scripts/sync.sh'
 REL = '.chezmoitemplates/ai/shared/instructions.md'
+# 範本只附帶引擎自己的 skill；測試需要的其他 skill 來自這個目錄，疊在範本上
+FIXTURE_SKILLS = REPO / 'tests/fixtures/skills'
 # 夾具的 Git 不做背景維護：commit、fetch、push 之後的自動維護會短暫留下
 # .git/objects/maintenance.lock，比對完整狀態的測試會因此時好時壞（#26）
 QUIET_GIT = dict(GIT_CONFIG_COUNT='3', GIT_CONFIG_KEY_0='maintenance.auto', GIT_CONFIG_VALUE_0='false',
@@ -43,6 +45,8 @@ class WriteTests(unittest.TestCase):
                         GIT_TERMINAL_PROMPT='0', GIT_AUTHOR_NAME='Fixture', GIT_AUTHOR_EMAIL='fixture@example.test',
                         GIT_COMMITTER_NAME='Fixture', GIT_COMMITTER_EMAIL='fixture@example.test', **QUIET_GIT)
         shutil.copytree(REPO / 'examples/chezmoi', self.src)
+        if getattr(self, 'fixture_skills', True):
+            shutil.copytree(FIXTURE_SKILLS, self.src, dirs_exist_ok=True)
         self.git(self.src, 'init', '-b', 'main')
         self.git(self.src, 'add', '.')
         self.git(self.src, 'commit', '-qm', 'fixture baseline')
@@ -575,7 +579,7 @@ sys.exit(10 if secret else 0)
                 path.unlink()
 
     def test_new_shared_skill_removed_secret_in_outbound_history(self):
-        rel = '.chezmoitemplates/ai/shared/skills/review/SKILL.md'
+        rel = '.chezmoitemplates/ai/shared/skills/sample-alpha/SKILL.md'
         original = (self.src / rel).read_bytes()
         (self.src / rel).write_bytes(original + b'\nSYNTHETIC_TEST_SECRET\n')
         self.git(self.src, 'add', rel)
@@ -929,37 +933,37 @@ sys.exit(10 if secret else 0)
         self.assertIn('NO_CHANGES', self.skill_status())
 
     def test_skill_removed_locally_and_remotely(self):
-        self.remove_skill(self.src, 'review')
+        self.remove_skill(self.src, 'sample-alpha')
         output = self.skill_status(expected=2)
-        self.assertIn('SOURCE: %s staged=clean working=removed' % self.skill_paths('review')[0], output)
-        self.assertIn('TARGET: .claude/skills/review/SKILL.md orphan', output)
+        self.assertIn('SOURCE: %s staged=clean working=removed' % self.skill_paths('sample-alpha')[0], output)
+        self.assertIn('TARGET: .claude/skills/sample-alpha/SKILL.md orphan', output)
         output = self.replan()
-        self.assertIn('SKILL_REMOVED: review', output)
-        self.assertIn('SOURCE: %s before=' % self.skill_paths('review')[1], output)
-        self.assertIn('TARGET: .agents/skills/review/SKILL.md removed', output)
+        self.assertIn('SKILL_REMOVED: sample-alpha', output)
+        self.assertIn('SOURCE: %s before=' % self.skill_paths('sample-alpha')[1], output)
+        self.assertIn('TARGET: .agents/skills/sample-alpha/SKILL.md removed', output)
         self.execute()
         self.assertEqual(self.git(self.src, 'rev-parse', 'HEAD'), self.git(self.remote, 'rev-parse', 'main'))
-        self.assertEqual(self.git(self.src, 'ls-tree', '-r', '--name-only', 'HEAD', '--', *self.skill_paths('review')), '')
-        for target in self.skill_targets('review'):
+        self.assertEqual(self.git(self.src, 'ls-tree', '-r', '--name-only', 'HEAD', '--', *self.skill_paths('sample-alpha')), '')
+        for target in self.skill_targets('sample-alpha'):
             self.assertFalse(target.parent.exists())
-        self.assertTrue(self.skill_targets('deploy')[0].exists())
+        self.assertTrue(self.skill_targets('sample-beta')[0].exists())
         self.assertIn('NO_CHANGES', self.skill_status())
         # 另一台機器移除另一個 skill；目錄裡有使用者自己的檔案時，只移除產生的檔案
-        note = self.skill_targets('deploy')[0].parent / 'notes.txt'
+        note = self.skill_targets('sample-beta')[0].parent / 'notes.txt'
         note.write_text('kept')
-        self.publish_from_other(lambda root: self.remove_skill(root, 'deploy'), 'fixture remove skill')
-        self.assertIn('SKILL_REMOVED: deploy', self.replan('in'))
+        self.publish_from_other(lambda root: self.remove_skill(root, 'sample-beta'), 'fixture remove skill')
+        self.assertIn('SKILL_REMOVED: sample-beta', self.replan('in'))
         self.execute('in')
-        self.assertFalse((self.src / self.skill_paths('deploy')[0]).exists())
+        self.assertFalse((self.src / self.skill_paths('sample-beta')[0]).exists())
         self.assertEqual(self.git(self.src, 'status', '--porcelain'), '')
-        self.assertFalse(self.skill_targets('deploy')[0].exists())
+        self.assertFalse(self.skill_targets('sample-beta')[0].exists())
         self.assertEqual(note.read_text(), 'kept')
-        self.assertFalse(self.skill_targets('deploy')[1].parent.exists())
+        self.assertFalse(self.skill_targets('sample-beta')[1].parent.exists())
 
     def test_skill_removal_keeps_a_modified_target(self):
-        target = self.skill_targets('review')[0]
+        target = self.skill_targets('sample-alpha')[0]
         target.write_text('edited by the user')
-        self.remove_skill(self.src, 'review')
+        self.remove_skill(self.src, 'sample-alpha')
         before = self.state()
         self.assertIn('DRIFT', self.replan(expected=2))
         self.assertEqual(before, self.state())
@@ -1031,7 +1035,7 @@ sys.exit(10 if secret else 0)
             self.assertFalse(target.parent.exists())
         # 範圍外的路徑仍然被擋下，即使它放在 skill 的目錄裡
         def extra(root):
-            (root / '.chezmoitemplates/ai/shared/skills/review/extra.md').write_text('out of scope')
+            (root / '.chezmoitemplates/ai/shared/skills/sample-alpha/extra.md').write_text('out of scope')
         self.publish_from_other(extra, 'fixture extra file')
         self.assertIn('BLOCKED_OUT_OF_SCOPE_HISTORY', self.replan('in', expected=66))
 
@@ -1064,11 +1068,12 @@ sys.exit(10 if secret else 0)
         def doctor():
             return subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
                                   capture_output=True, timeout=120, text=True)
-        self.assertIn('OK   skills: 6 in the source\n', doctor().stdout)
+        fixtures = 'sample-alpha, sample-beta, sample-braces'
+        self.assertIn('OK   skills: 4 in the source, beyond the template: ' + fixtures + '\n', doctor().stdout)
         # 新增但還沒部署：集合有效，缺的是部署目標
         self.add_skill(self.src)
         result = doctor()
-        self.assertIn('OK   skills: 7 in the source, beyond the template: ' + self.SKILL, result.stdout)
+        self.assertIn('OK   skills: 5 in the source, beyond the template: ' + fixtures + ', ' + self.SKILL + '\n', result.stdout)
         self.assertIn('OK   source:', result.stdout)
         self.assertIn('FAIL targets:', result.stdout)
         self.assertEqual(result.returncode, 1)
@@ -1081,7 +1086,7 @@ sys.exit(10 if secret else 0)
         # 少了包裝檔：集合有效，source 不完整
         (self.src / self.skill_paths(self.SKILL)[2]).unlink()
         result = doctor()
-        self.assertIn('OK   skills: 7', result.stdout)
+        self.assertIn('OK   skills: 5', result.stdout)
         self.assertIn('FAIL source:', result.stdout)
         # 名稱不合法：集合本身無效
         self.add_skill(self.src, 'Bad_Name')
@@ -1093,7 +1098,7 @@ sys.exit(10 if secret else 0)
     def test_skill_set_change_rolls_back_created_and_removed_files(self):
         def change(root):
             self.add_skill(root)
-            self.remove_skill(root, 'review')
+            self.remove_skill(root, 'sample-alpha')
         self.publish_from_other(change, 'fixture add and remove')
         module, engine = self.engine_instance()
         engine.build()
@@ -1116,9 +1121,55 @@ sys.exit(10 if secret else 0)
             self.assertFalse(target.parent.exists())
         for rel in self.skill_paths(self.SKILL):
             self.assertFalse((self.src / rel).parent.exists())
-        self.assertTrue(all(target.exists() for target in self.skill_targets('review')))
+        self.assertTrue(all(target.exists() for target in self.skill_targets('sample-alpha')))
         self.assertFalse((self.src / '.git/ai-agent-sync-transaction').exists())
         self.assertFalse((self.src / '.git/index.lock').exists())
+
+
+
+class TemplateOnlyTests(WriteTests):
+    """The template as a new user gets it: the engine's own skill and nothing else."""
+    fixture_skills = False
+
+    def test_template_has_one_skill_and_syncs(self):
+        self.assertEqual(sorted(p.name for p in (self.src / '.chezmoitemplates/ai/shared/skills').iterdir()), ['dotfiles-sync'])
+        self.assertEqual(sorted(p.name for p in (self.dst / '.claude/skills').iterdir()), ['dotfiles-sync'])
+        self.assertEqual(sorted(p.name for p in (self.dst / '.agents/skills').iterdir()), ['dotfiles-sync'])
+        self.assertIn('NO_CHANGES', self.skill_status())
+        result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(self.write_config())], env=self.env,
+                                cwd=self.root, capture_output=True, timeout=120, text=True)
+        self.assertIn('OK   skills: 1 in the source\n', result.stdout)
+        self.assertIn('24/24 mapped files present', result.stdout)
+        self.assertIn('OK   targets: 11/11 deployed', result.stdout)
+        # 發布一次修改，再接收一次修改
+        self.edit()
+        self.replan()
+        self.execute()
+        self.assertEqual(self.git(self.src, 'rev-parse', 'HEAD'), self.git(self.remote, 'rev-parse', 'main'))
+        self.incoming()
+        self.replan('in')
+        self.execute('in')
+        self.assertIn('Incoming shared edit.', (self.dst / '.codex/AGENTS.md').read_text())
+        self.assertIn('NO_CHANGES', self.skill_status())
+
+    def test_first_skill_of_a_new_user(self):
+        body = self.add_skill(self.src)
+        output = self.replan()
+        self.assertIn('SKILL_ADDED: ' + self.SKILL, output)
+        self.execute()
+        for target in self.skill_targets(self.SKILL):
+            self.assertEqual(target.read_bytes(), body)
+        self.assertIn('NO_CHANGES', self.skill_status())
+        deployed = {str(p.relative_to(self.dst)): (p.read_bytes(), p.stat().st_mode) for p in self.dst.rglob('*') if p.is_file()}
+        self.apply()
+        self.assertEqual(deployed, {str(p.relative_to(self.dst)): (p.read_bytes(), p.stat().st_mode)
+                                    for p in self.dst.rglob('*') if p.is_file()})
+
+
+# 這個類別只跑上面兩個測試，不重跑繼承來的全部情境
+for name in dir(WriteTests):
+    if name.startswith('test_'):
+        setattr(TemplateOnlyTests, name, None)
 
 
 if __name__ == '__main__':

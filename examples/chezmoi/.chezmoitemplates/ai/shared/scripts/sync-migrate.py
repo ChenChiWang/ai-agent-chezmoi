@@ -49,8 +49,8 @@ def blob(backup, entry):
 
 
 class Migration(w.Engine):
-    # 建立計畫時由 select() 換成 source 自己的集合，套用、驗證與復原時換成清單的集合
-    skill_set = a.SKILLS
+    # 建立計畫時由 select() 設成 source 自己的集合，套用、驗證與復原時設成清單的集合
+    skill_set = None
 
     def __init__(self, args, tmp):
         args.offline, args.operation = True, 'in'
@@ -77,8 +77,15 @@ class Migration(w.Engine):
             self.scan(present, scope)
 
     def layout(self, legacy):
+        # 沒有計畫或清單指定集合時，盤點以 source 自己的 skill 為準，不依賴任何預設清單
+        skills = self.skill_set
+        if skills is None:
+            try:
+                skills = a.legacy_skills(self.src) if legacy else a.source_skills(self.src, 'claude')
+            except (ValueError, OSError):
+                raise w.Block(65, 'BLOCKED_LAYOUT: invalid skill name, or wrapper without its skill') from None
         # Reject extra skill payloads/encodings instead of silently omitting them.
-        expected = {p for p in (a.legacy_files(self.skill_set) if legacy else a.mapping('claude', self.skill_set)[0])
+        expected = {p for p in (a.legacy_files(skills) if legacy else a.mapping('claude', skills)[0])
                     if p.startswith('dot_claude/skills/')}
         actual = set()
         root = self.src / 'dot_claude/skills'
@@ -90,7 +97,7 @@ class Migration(w.Engine):
                 actual.add((Path(parent) / name).relative_to(self.src).as_posix())
         w.need(actual == expected, 'BLOCKED_INVENTORY_MISMATCH', 66)
         if legacy:
-            for skill in self.skill_set:
+            for skill in skills:
                 data = w.read(self.src / ('dot_claude/skills/' + skill + '/SKILL.md'))[0]
                 w.text_file(data)
                 lines = data.decode().splitlines()
@@ -113,14 +120,14 @@ class Migration(w.Engine):
                 for name in dirs + files:
                     w.safe(Path(parent) / name)
                 shared.update((Path(parent) / name).relative_to(self.src).as_posix() for name in files)
-            w.need(shared == {p for p in a.mapping('claude', self.skill_set)[0] if p.startswith(a.PREFIX)},
+            w.need(shared == {p for p in a.mapping('claude', skills)[0] if p.startswith(a.PREFIX)},
                    'BLOCKED_INVENTORY_MISMATCH', 66)
         # Reject alternative chezmoi encodings that could target our outputs.
         # Unknown unrelated files are preserved; no content is read here.
-        allowed = set(a.legacy_files(self.skill_set) if legacy else a.mapping('claude', self.skill_set)[0])
+        allowed = set(a.legacy_files(skills) if legacy else a.mapping('claude', skills)[0])
         attributes = ('encrypted_', 'executable_', 'literal_', 'private_', 'readonly_',
                       'empty_', 'exact_', 'create_', 'modify_', 'remove_', 'symlink_')
-        managed = set(a.mapping('claude-codex', self.skill_set)[1])
+        managed = set(a.mapping('claude-codex', skills)[1])
         for parent, dirs, files in os.walk(self.src):
             descend = []
             for name in dirs + files:
