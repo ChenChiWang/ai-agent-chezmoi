@@ -29,6 +29,11 @@ name to it left no way through for a machine that was already online.
   engine. Extra files, invalid names and existing Codex targets are still refused.
   `apply`, `verify` and `rollback` read the set from the approved manifest, so a skill
   added after the conversion does not invalidate its backup. Run in fixtures only.
+- **Template** (#25): ships `dotfiles-sync` and nothing else. The five skills it used
+  to carry were placeholders whose names came from the setup the template was first
+  built from, and every new user got them deployed. The tests bring their own fixture
+  skills (`tests/fixtures/skills/`), and a separate test class runs the template as a
+  new user gets it. A source that already has those five skills keeps them.
 - **Agent text** (#22): the `dotfiles-sync` skill and `setup/AGENT-SETUP.md` describe
   the steps. An agent may suggest adding, removing or improving a skill, and changes the
   source only after the user agrees to that suggestion.
