@@ -25,7 +25,9 @@ both agents, and no new runtime Python package dependency.
 
 Profiles select a closed mapping: `claude` has 31 source files / 14 targets;
 `claude-codex` has 39 / 21. Always pass `--profile claude` for a Claude-only stage;
-the compatibility default is dual. Both include all six shared skills and
+the compatibility default is dual. These counts are for the six skills of the template;
+each further skill adds one shared source, one wrapper and one target per agent (see
+[skill set](#skill-set)). Both include the
 Claude-only settings. The scanner owns the mapping and wrapper schema consumed by
 shell/Python engines. Normal sync still rejects missing output files or source
 layout changes; the separate approved converter handles first deployment and staged
@@ -192,6 +194,56 @@ invalidate approval (some fail earlier as conflict/drift). The plan is also chec
 again immediately before execution. Reusing an unchanged no-op plan is harmless;
 state changes naturally invalidate plans that performed writes.
 
+## Skill set
+
+The set of synchronized skills is not a list in the engine. It is read from each source
+snapshot: every directory `shared/skills/<name>/` that contains a `SKILL.md` is a skill,
+and the mapping for that snapshot is the fixed files plus, per skill, the shared text and
+one wrapper per agent (`dot_claude/skills/<name>/SKILL.md.tmpl`,
+`dot_agents/skills/<name>/SKILL.md.tmpl`). The set is therefore still closed and
+enumerable at every commit; it just belongs to the commit instead of to the engine.
+A source without the skill directory uses the six template names.
+
+- Names match `[a-z0-9][a-z0-9-]*`, at most 64 characters and 64 skills. `dotfiles-sync`
+  is the engine's own skill and is always part of the set. Any other name under the skill
+  root is refused (`INVALID_LAYOUT` or `BLOCKED_LAYOUT`), not ignored.
+- A wrapper must be the exact one-line include of its skill. A skill without its wrappers,
+  or a wrapper without its skill, is refused: a real `chezmoi apply` could not render it.
+- Other files inside a skill directory are out of scope, as before. A commit that changes
+  one is `BLOCKED_OUT_OF_SCOPE_HISTORY`.
+- History is checked per commit against the sets before and after that commit, so a range
+  may add a skill in one commit and remove it in a later one.
+
+**Adding** a skill: create the three files in the source and build a push plan. The plan
+prints `SKILL_ADDED: <name>`, the new sources as `before=absent` and the new outputs as
+`created`. A target that already exists with exactly the rendered content is adopted
+without a write. A target that exists with other content returns
+`BLOCKED_TARGET_COLLISION` (exit 66) and is left as it is: move it away or make it match,
+then plan again.
+
+**Removing** a skill: delete its three files from the source and build a push plan. The
+plan prints `SKILL_REMOVED: <name>`, the sources as `after=absent` and the outputs as
+`removed`. An output is removed only when it still has the content of the last render; an
+edited one returns `DRIFT` and stays. On the machine that makes the removal an output that
+is already gone is accepted. On a machine that receives the removal it is a missing
+target like any other and stops the plan, so restore it first. The skill directory is
+removed when it is empty, and kept when it holds anything else.
+
+`status` reports the time between the edit and the approved plan: a skill added to the
+working tree shows its outputs as `missing`, a skill removed from it shows its sources as
+`working=removed` and its outputs as `orphan`. Both are `DRIFT` (exit 2) until the plan is
+applied, like any other source edit that is not deployed yet.
+
+`auto_in` never applies a change of the set. Such a change always includes wrappers,
+which are not shared text, so it returns `PENDING_APPROVAL`. Later edits to the text of a
+skill that is already part of the set are shared text and apply automatically.
+
+Upgrading from an engine with the fixed list: the engine change touches only the scripts,
+which the older engine accepts as an ordinary incoming commit that needs explicit
+approval. Every machine has to apply that commit **before** the first change of the set
+is published. An older engine that receives a new skill returns
+`BLOCKED_OUT_OF_SCOPE_HISTORY` for the whole range.
+
 ## Incoming and outgoing behavior
 
 `in` accepts only a remote descendant of local HEAD. Every intervening commit must
@@ -261,6 +313,9 @@ instructions slot rather than a repository file. See [scanner details](secret-sc
 Before changing files, the engine rechecks the approved state and acquires Git's
 `index.lock`. It stores private old/new bytes, modes, hashes, paths and old/new ref
 IDs in `.git/ai-agent-sync-transaction/manifest.json` and numbered backup files.
+For a file that a change of the skill set creates or removes, the missing side has
+`null` hash and mode and no backup file: a `null` old value means "remove the file again"
+during recovery, a `null` new value means "restore it from `old-N`".
 Files are replaced atomically one at a time. Generated outputs are canonically `644`,
 or `755` when executable (since 2026-09-27). An existing mode that is equal to or
 stricter than that (for example `600` or `700`) is kept. A looser mode, with group or
@@ -316,7 +371,7 @@ history separately.
 | `DRIFT` | 2 |
 | `USAGE` | 64 |
 | `INVALID_*`, `UNSUPPORTED_*`, `BLOCKED_LAYOUT`, `BLOCKED_OVERRIDE`, `BLOCKED_SYMLINK` | 65 |
-| `BLOCKED_CONFLICT`, `BLOCKED_STAGED_CHANGES`, `BLOCKED_INDEX_FLAGS`, `BLOCKED_BRANCH`, `BLOCKED_LOCAL_CHANGES`, `BLOCKED_*HISTORY*`, `BLOCKED_NON_FAST_FORWARD` | 66 |
+| `BLOCKED_CONFLICT`, `BLOCKED_STAGED_CHANGES`, `BLOCKED_INDEX_FLAGS`, `BLOCKED_BRANCH`, `BLOCKED_LOCAL_CHANGES`, `BLOCKED_*HISTORY*`, `BLOCKED_NON_FAST_FORWARD`, `BLOCKED_TARGET_COLLISION` | 66 |
 | `BLOCKED_SECRET` | 67 |
 | `BLOCKED_STALE_PLAN`, `BLOCKED_EXPIRED_PLAN` | 68 |
 | `MISSING_DEPENDENCY` | 69 |

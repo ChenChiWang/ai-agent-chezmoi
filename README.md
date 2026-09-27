@@ -194,10 +194,13 @@ and `settings.json` into it (every step shown and confirmed first), applies, sca
 makes the baseline commit and, after your approval, pushes to the **empty private
 repository** you provide. Every later machine uses the normal path.
 
-Two known limits: the v2 skill set is fixed to the six names in the template, so
-their content can change but skills cannot be added or removed, and other skills stay
-unmanaged; legacy v1 users who want a conversion with rollback should read
-[migration readiness](./docs/history/migration-readiness.md).
+The skill set is the source's own: every directory with a `SKILL.md` under
+`shared/skills/`, plus its two one-line wrappers. Adding or removing a skill is a change
+to the source like any other, published and received through an approved plan (see
+[skill set](./docs/sync-v2.md#skill-set)). Known limits: a skill is a single `SKILL.md`,
+so skills with extra files stay unmanaged; the converter for a later Codex expansion
+still expects the six template names; legacy v1 users who want a conversion with
+rollback should read [migration readiness](./docs/history/migration-readiness.md).
 
 **Never** run `chezmoi init --apply` against this public repository, and never copy
 it over an existing agent configuration.
