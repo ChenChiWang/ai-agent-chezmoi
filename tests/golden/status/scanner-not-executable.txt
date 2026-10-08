@@ -1,0 +1,2 @@
+MISSING_DEPENDENCY: reviewed scanner adapter required
+exit: 69

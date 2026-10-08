@@ -1,0 +1,5 @@
+SOURCE: .chezmoitemplates/ai/shared/instructions.md staged=changed working=clean
+TARGET: .claude/CLAUDE.md changed
+TARGET: .codex/AGENTS.md changed
+DRIFT: generated files differ; no changes applied
+exit: 2

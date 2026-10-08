@@ -1,0 +1,2 @@
+NO_CHANGES: v2 scope only; history and unrelated files not assessed
+exit: 0

@@ -1,0 +1,3 @@
+TARGET: .config/ai-agent/bin/sync.sh mode
+DRIFT: generated files differ; no changes applied
+exit: 2

@@ -1,0 +1,3 @@
+TARGET: .claude/CLAUDE.md changed
+DRIFT: generated files differ; no changes applied
+exit: 2

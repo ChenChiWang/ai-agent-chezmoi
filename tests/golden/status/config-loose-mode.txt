@@ -1,0 +1,2 @@
+INVALID_CONFIG: reviewed local configuration required
+exit: 78

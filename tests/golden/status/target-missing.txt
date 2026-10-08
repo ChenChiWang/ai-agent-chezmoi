@@ -1,0 +1,3 @@
+TARGET: .agents/skills/sample-alpha/SKILL.md missing
+DRIFT: generated files differ; no changes applied
+exit: 2

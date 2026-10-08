@@ -1,0 +1,2 @@
+UNSUPPORTED_HOME: custom CODEX_HOME
+exit: 65

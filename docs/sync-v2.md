@@ -454,6 +454,7 @@ on PATH:
 ```sh
 sh tests/test-render.sh
 sh tests/test-status.sh
+sh tests/test-status-golden.sh
 python3 tests/test-offline-status.py
 python3 tests/test-scanner.py
 python3 tests/test-write.py

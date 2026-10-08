@@ -1,0 +1,7 @@
+SOURCE: .chezmoitemplates/ai/shared/skills/sample-new/SKILL.md staged=clean working=changed
+SOURCE: dot_claude/skills/sample-new/SKILL.md.tmpl staged=clean working=changed
+SOURCE: dot_agents/skills/sample-new/SKILL.md.tmpl staged=clean working=changed
+TARGET: .claude/skills/sample-new/SKILL.md missing
+TARGET: .agents/skills/sample-new/SKILL.md missing
+DRIFT: generated files differ; no changes applied
+exit: 2

@@ -1,0 +1,4 @@
+TARGET: .claude/CLAUDE.md mode
+TARGET: .config/ai-agent/bin/sync-write.py mode
+DRIFT: generated files differ; no changes applied
+exit: 2

@@ -1,0 +1,2 @@
+USAGE: unknown option
+exit: 64
