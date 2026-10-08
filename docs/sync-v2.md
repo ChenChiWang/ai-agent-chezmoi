@@ -382,6 +382,11 @@ writable" on Windows means that another principal holds a write-class right (wri
 append, delete, WRITE_DAC, WRITE_OWNER, GENERIC_WRITE or GENERIC_ALL). The parameter
 file is written by the user, so on Windows it has to be protected once with the command
 that `doctor` prints for `plan_dir`, with the file path in place of the directory.
+On Windows a redirection is any reparse point (symlink, junction, mount point), and the
+temporary root is the user's `%TEMP%`: it lies under the profile, so the POSIX rule that a
+root must not contain the scratch area becomes "the scratch area must not overlap the
+source or a deployment region" (since 2026-10-09, #39); every scratch directory is
+protected the moment it is created.
 
 ## Transactions and recovery
 

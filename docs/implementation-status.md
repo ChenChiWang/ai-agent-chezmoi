@@ -16,8 +16,11 @@ Current state only. Older round-by-round records are archived in
   (user, SYSTEM, Administrators only). Everything the engine creates privately gets a
   protected DACL through `icacls` with SIDs and is read back. Verified on the Windows 11
   machine: a profile file with the inherited sandbox group is not private, `make_private`
-  makes it so, and `load_config` accepts it. Reparse points and the Windows temporary
-  root are next (W4b); mode semantics wait for the entry point (W5).
+  makes it so, and `load_config` accepts it. Mode semantics wait for the entry point (W5).
+- **Windows redirections and scratch area** (#39, W4b): `is_redirected` sees every reparse
+  point on Windows; the scratch rule of `validate_layout` lets `%TEMP%` live under the
+  profile as long as it overlaps neither the source nor a deployment region. `status`
+  runs against the real private source on the Windows 11 machine without any override.
 - **Status in Python** (#35, W3): `tests/test-status-golden.sh` first recorded the complete
   output and exit code of the shell `status` for 31 cases under `tests/golden/status/`;
   `--record` regenerates them. Then `status` moved into `sync-write.py` with the same
