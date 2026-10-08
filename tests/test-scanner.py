@@ -349,4 +349,5 @@ if __name__ == "__main__":
         sys.exit("MISSING_DEPENDENCY: put Gitleaks 8.30.1 on PATH; real tests are not skipped")
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(ScannerTests)
     suite.addTest(EngineTests("test_engine_real_scanner"))
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(PlatformTests))
     sys.exit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())
