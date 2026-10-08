@@ -3,10 +3,15 @@
 Current state only. Older round-by-round records are archived in
 [history/implementation-status-2026-09-25.md](history/implementation-status-2026-09-25.md).
 
-## 2026-10-09 — the executable bit belongs to Git
+## 2026-10-09 — native Windows plan: W1 and W2
 
-First step of the native Windows plan (#15, W1), a correctness fix for every platform
-(#31). The push candidate tree took `100644`/`100755` from the filesystem, so a push
+- **Platform layer** (#33, W2): the temporary root, symlink test, path format, owner
+  and permission tests, directory `fsync`, `replace` and the child environment are one
+  section of `scan-secrets.py`; see [sync-v2](sync-v2.md#platform-layer). POSIX is a
+  pure refactor. Windows gets `%TEMP%`, the retries and environment variables it needs,
+  and a refusal wherever an equivalent check does not exist yet. The engine still does
+  not run on native Windows: ACLs, `status` and an entry point are the next steps.
+- **Executable bit** (#31, W1): first step of the plan, a correctness fix for every platform. The push candidate tree took `100644`/`100755` from the filesystem, so a push
 from native Windows, where `stat` reports `666` for every file, would have turned the
 three executable engine scripts into `100644` for every machine; on POSIX a `chmod` on
 a source file was published as a change. The commit now takes each path's mode from

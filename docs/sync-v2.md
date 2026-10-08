@@ -350,6 +350,25 @@ raw scanner/tool errors never reach console output. Commit metadata is scanned v
 a neutral allowed snapshot slot, so a metadata finding may name the shared
 instructions slot rather than a repository file. See [scanner details](secret-scanner.md).
 
+## Platform layer
+
+Every dependency on the operating system lives in one section of `scan-secrets.py`
+(since 2026-10-09, #33), which `sync-write.py` and `sync-migrate.py` already load as
+their shared module: the temporary root (`/tmp`; the user's temporary directory on
+Windows), the symlink test behind every `BLOCKED_SYMLINK` and layout check, the path
+format accepted in the parameter file, the owner and permission tests for the
+parameter file, plan files and manifests, directory `fsync`, atomic `replace` and the
+minimal child environment. On macOS and Linux each function does exactly what the
+inline code did before, so console output, plan documents and `status` are unchanged.
+On native Windows only the obviously correct branches exist: `%TEMP%`, no directory
+`fsync`, a few retries of `replace` while another program holds the target, the
+variables Git and chezmoi need (`SystemRoot`, `PATHEXT`, `TEMP`, `COMSPEC`, with
+`USERPROFILE` pointing at the isolated home), a drive-absolute path format and the
+scanner run through the current interpreter. The owner and permission tests return
+"not private" there, so a parameter file or plan is refused rather than accepted
+unchecked, until an ACL implementation replaces them. `sync.sh` keeps its own POSIX
+assumptions until `status` moves to Python.
+
 ## Transactions and recovery
 
 Before changing files, the engine rechecks the approved state and acquires Git's

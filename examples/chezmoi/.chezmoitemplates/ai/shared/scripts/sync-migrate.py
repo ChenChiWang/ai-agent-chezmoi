@@ -322,7 +322,7 @@ class Migration(w.Engine):
 
     def load(self):
         content, mode = w.read(self.backup / 'manifest.json')
-        w.need(mode & 0o077 == 0 and w.digest(content) == self.a.approve, 'BLOCKED_STALE_PLAN', 68)
+        w.need(a.private_mode(mode) and w.digest(content) == self.a.approve, 'BLOCKED_STALE_PLAN', 68)
         doc = a.read_json(self.backup / 'manifest.json')
         w.need(doc['schema'] == 1 and doc['profile'] == self.profile
                and doc['source'] == str(self.src) and doc['destination'] == str(self.dst), 'INVALID_MANIFEST')
@@ -479,7 +479,7 @@ def main():
     else:
         w.need(args.approve and re.fullmatch('[0-9a-f]{64}', args.approve), 'USAGE: --approve MIGRATION_ID required', 64)
     w.layout(args, legacy=True)  # Includes removed legacy paths, before locking.
-    with tempfile.TemporaryDirectory(prefix='ai-agent-migration-', dir='/tmp') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ai-agent-migration-', dir=str(a.temporary_root())) as tmp:
         with w.lock(Path(args.source).resolve()):
             engine = Migration(args, Path(tmp))
             if args.command == 'plan':
