@@ -288,14 +288,14 @@ class PlatformTests(unittest.TestCase):
         self.assertFalse(API["absolute_path"]("relative"))
         self.assertEqual(API["child_environment"](Path("/h"), "/bin"), {"PATH": "/bin", "HOME": "/h", "LC_ALL": "C"})
         self.assertEqual(API["child_environment"](Path("/h"))["PATH"], os.defpath)
-        self.assertTrue(API["private_mode"](0o600))
-        self.assertFalse(API["private_mode"](0o640))
+        self.assertTrue(API["private_mode"](Path("/x"), 0o600))
+        self.assertFalse(API["private_mode"](Path("/x"), 0o640))
         private = Path(self.temp.name) / "private"
         private.write_bytes(b"{}")
         private.chmod(0o600)
-        self.assertTrue(API["private_file"](private.stat()))
+        self.assertTrue(API["private_file"](private, private.stat()))
         private.chmod(0o664)
-        self.assertFalse(API["private_file"](private.stat()))
+        self.assertFalse(API["private_file"](private, private.stat()))
         self.assertEqual(API["scanner_command"](Path("/s.py")), ["/s.py"])
         link = Path(self.temp.name) / "link"
         link.symlink_to(private)
@@ -326,8 +326,11 @@ class PlatformTests(unittest.TestCase):
                                    "SystemRoot": "C:\\Windows", "SystemDrive": "C:", "PATHEXT": ".EXE",
                                    "TEMP": "C:\\t", "TMP": "C:\\t", "COMSPEC": "cmd.exe"})
             # 做不到等價的擁有者與權限檢查：一律不通過，不略過
-            self.assertFalse(API["private_mode"](0o600))
-            self.assertFalse(API["private_file"](Path(__file__).stat()))
+            # 做不到的判定不會默默通過：Windows 分支要讀 ACL，這裡給它一個開放的描述子
+            with mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME,
+                                 security_descriptor=lambda p: API["parse_sddl"](self.INHERITED)):
+                self.assertFalse(API["private_mode"](Path(__file__), 0o600))
+                self.assertFalse(API["private_file"](Path(__file__), Path(__file__).stat()))
             self.assertIsNone(API["open_directory"](Path(self.temp.name)))
             self.assertEqual(API["scanner_command"](Path("C:\\s.py")), [sys.executable, "C:\\s.py"])
             # replace：暫時被佔用時重試，持續失敗就拋出
@@ -339,6 +342,95 @@ class PlatformTests(unittest.TestCase):
                 with self.assertRaises(PermissionError):
                     API["replace"]("a", "b")
             self.assertEqual(replaced.call_count, 5)
+
+
+    # ---- Windows 的 ACL（#38）：SDDL 解析與政策判定是純函式，這裡用實機錄下的字串 ----
+
+    ME = "S-1-5-21-3944484857-1765433118-1380507665-1001"
+    OTHER = "S-1-5-21-3944484857-1765433118-1380507665-1004"
+    INHERITED = ("O:" + ME + "D:AI(A;ID;0x1200a9;;;" + OTHER + ")(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;FA;;;" + ME + ")")
+    PROTECTED = "O:" + ME + "D:PAI(A;;FA;;;BA)(A;;FA;;;SY)(A;;FA;;;" + ME + ")"
+    DIRECTORY = "O:" + ME + "D:PAI(A;OICI;FA;;;" + ME + ")(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)"
+
+    def test_sddl_parsing_and_policy(self):
+        owner, aces = API["parse_sddl"](self.INHERITED)
+        self.assertEqual(owner, self.ME)
+        self.assertEqual(aces[0], ("A", "ID", 0x1200A9, self.OTHER))
+        self.assertEqual(aces[1], ("A", "ID", 0x1F01FF, "S-1-5-18"))
+        self.assertEqual(aces[2][3], "S-1-5-32-544")
+        self.assertEqual(API["parse_sddl"](self.DIRECTORY)[1][3], ("A", "OICI", 0x1F01FF, "S-1-3-4"))
+        self.assertEqual(API["parse_sddl"]("O:BAD:(A;;GRGW;;;WD)"), ("S-1-5-32-544", [("A", "", 0xC0000000, "WD")]))
+        for bad in ("", "O:" + self.ME, "O:" + self.ME + "D:(A;;ZZ;;;SY)", "O:" + self.ME + "D:(A;;FA)"):
+            with self.assertRaises(ValueError):
+                API["parse_sddl"](bad)
+        private, writable = API["acl_private"], API["acl_foreign_writable"]
+        # 繼承的唯讀群組：不算私有，但也沒有寫入權
+        self.assertFalse(private(API["parse_sddl"](self.INHERITED), self.ME))
+        self.assertFalse(writable(API["parse_sddl"](self.INHERITED), self.ME))
+        # 受保護、只有使用者／SYSTEM／Administrators／OWNER RIGHTS：私有
+        self.assertTrue(private(API["parse_sddl"](self.PROTECTED), self.ME))
+        self.assertTrue(private(API["parse_sddl"](self.DIRECTORY), self.ME))
+        # 別人擁有、或別人可寫
+        self.assertFalse(private(API["parse_sddl"](self.PROTECTED), self.OTHER))
+        self.assertTrue(writable(API["parse_sddl"]("O:" + self.ME + "D:(A;;FA;;;SY)(A;;0x120116;;;" + self.OTHER + ")"), self.ME))
+        self.assertTrue(writable(API["parse_sddl"]("O:" + self.ME + "D:(A;;SD;;;WD)"), self.ME))
+        self.assertTrue(writable(API["parse_sddl"]("O:" + self.ME + "D:(A;;GA;;;AU)"), self.ME))
+        # deny ACE 只會限制：不影響私有，也不算可寫
+        denied = API["parse_sddl"]("O:" + self.ME + "D:(D;;FA;;;" + self.OTHER + ")(A;;FA;;;" + self.ME + ")")
+        self.assertTrue(private(denied, self.ME))
+        self.assertFalse(writable(denied, self.ME))
+
+    def test_private_checks_posix_and_windows(self):
+        private = Path(self.temp.name) / "private"
+        private.write_bytes(b"{}")
+        private.chmod(0o600)
+        self.assertTrue(API["private_file"](private, private.stat()))
+        self.assertTrue(API["private_mode"](private, 0o600))
+        self.assertFalse(API["private_mode"](private, 0o640))
+        self.assertFalse(API["foreign_writable"](private, private.stat()))
+        private.chmod(0o664)
+        self.assertFalse(API["private_file"](private, private.stat()))
+        self.assertTrue(API["foreign_writable"](private, private.stat()))
+        self.assertEqual(API["private_hint"](private), "chmod 600 " + str(private))
+        self.assertEqual(API["private_hint"](Path(self.temp.name)), "chmod 700 " + self.temp.name)
+        directory = Path(self.temp.name) / "plans"
+        directory.mkdir(mode=0o700)
+        self.assertEqual(API["private_directory_report"](directory), (True, " mode 700", ""))
+        directory.chmod(0o750)
+        self.assertEqual(API["private_directory_report"](directory), (False, " mode 750", "chmod 700 " + str(directory)))
+        # POSIX 的 make_private 不做任何事，也不呼叫 icacls
+        with mock.patch("subprocess.run") as run:
+            API["make_private"](private)
+        run.assert_not_called()
+        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME), \
+                mock.patch.dict(API["replace"].__globals__, security_descriptor=lambda p: API["parse_sddl"](self.INHERITED)):
+            self.assertFalse(API["private_file"](private, private.stat()))
+            self.assertFalse(API["private_mode"](private, 0o600))
+            self.assertFalse(API["foreign_writable"](private, private.stat()))
+            self.assertEqual(API["private_directory_report"](directory),
+                             (False, " acl open to other principals", API["private_hint"](directory)))
+            self.assertEqual(API["private_hint"](private),
+                             'icacls "%s" /inheritance:r /grant:r *%s:F *S-1-5-18:F *S-1-5-32-544:F' % (private, self.ME))
+            self.assertTrue(API["private_hint"](directory).endswith("*S-1-5-32-544:(OI)(CI)F"))
+        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME), \
+                mock.patch.dict(API["replace"].__globals__, security_descriptor=lambda p: API["parse_sddl"](self.PROTECTED)), \
+                mock.patch("subprocess.run", return_value=mock.Mock(returncode=0)) as run:
+            self.assertTrue(API["private_file"](private, private.stat()))
+            API["make_private"](private)
+            self.assertEqual(run.call_args[0][0], ["icacls", str(private), "/inheritance:r", "/grant:r",
+                                                  "*" + self.ME + ":F", "*S-1-5-18:F", "*S-1-5-32-544:F"])
+            API["make_private"](directory)
+            self.assertEqual(run.call_args[0][0][4:], ["*" + self.ME + ":(OI)(CI)F", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"])
+        # icacls 失敗，或設定後讀回仍不私有：OSError，絕不默默通過
+        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME), \
+                mock.patch.dict(API["replace"].__globals__, security_descriptor=lambda p: API["parse_sddl"](self.INHERITED)), \
+                mock.patch("subprocess.run", return_value=mock.Mock(returncode=0)):
+            with self.assertRaises(OSError):
+                API["make_private"](private)
+        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME), \
+                mock.patch("subprocess.run", return_value=mock.Mock(returncode=1)):
+            with self.assertRaises(OSError):
+                API["make_private"](private)
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="platform-test-", dir="/tmp")

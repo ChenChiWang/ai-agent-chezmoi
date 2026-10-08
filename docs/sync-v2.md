@@ -365,10 +365,23 @@ On native Windows only the obviously correct branches exist: `%TEMP%`, no direct
 `fsync`, a few retries of `replace` while another program holds the target, the
 variables Git and chezmoi need (`SystemRoot`, `PATHEXT`, `TEMP`, `COMSPEC`, with
 `USERPROFILE` pointing at the isolated home), a drive-absolute path format and the
-scanner run through the current interpreter. The owner and permission tests return
-"not private" there, so a parameter file or plan is refused rather than accepted
-unchecked, until an ACL implementation replaces them. `status` runs through the same
-layer since it moved to Python.
+scanner run through the current interpreter. `status` runs through the same layer
+since it moved to Python.
+
+Ownership and permissions on Windows (since 2026-10-09, #38) are ACLs. The equivalent
+of POSIX `600`/`700` is: the owner is the current user, and every allow entry in the
+DACL names the user, SYSTEM, Administrators or OWNER RIGHTS; an inherited entry for any
+other principal, even read-only, makes the file not private, exactly as a group-readable
+`640` would on POSIX. The engine reads the owner and DACL through `ctypes` as an SDDL
+string and interprets it in Python; it never parses the localized output of `icacls`.
+Files and directories the engine creates privately (plan files, `plan_dir`, the journal,
+the lock, the `check` state, migration backups and every temporary directory) get a
+protected DACL through `icacls <path> /inheritance:r /grant:r *<sid>:F ...` with SIDs,
+and the result is read back; a failure is an error, never a silent skip. "Group or other
+writable" on Windows means that another principal holds a write-class right (write,
+append, delete, WRITE_DAC, WRITE_OWNER, GENERIC_WRITE or GENERIC_ALL). The parameter
+file is written by the user, so on Windows it has to be protected once with the command
+that `doctor` prints for `plan_dir`, with the file path in place of the directory.
 
 ## Transactions and recovery
 

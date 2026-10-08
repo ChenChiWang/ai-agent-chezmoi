@@ -291,8 +291,10 @@ class Migration(w.Engine):
         # Back up exactly the affected paths, and the original index as evidence.
         w.need(not self.backup.exists() and self.backup.parent.is_dir(), 'INVALID_BACKUP_PATH')
         self.backup.mkdir(mode=0o700)
+        a.make_private(self.backup)
         try:
             (self.backup / 'blobs').mkdir(mode=0o700)
+            a.make_private(self.backup / 'blobs')
             for values in (source, target, proposed, rendered):
                 for value in values.values():
                     if value is not None:
@@ -322,7 +324,7 @@ class Migration(w.Engine):
 
     def load(self):
         content, mode = w.read(self.backup / 'manifest.json')
-        w.need(a.private_mode(mode) and w.digest(content) == self.a.approve, 'BLOCKED_STALE_PLAN', 68)
+        w.need(a.private_mode(self.backup / 'manifest.json', mode) and w.digest(content) == self.a.approve, 'BLOCKED_STALE_PLAN', 68)
         doc = a.read_json(self.backup / 'manifest.json')
         w.need(doc['schema'] == 1 and doc['profile'] == self.profile
                and doc['source'] == str(self.src) and doc['destination'] == str(self.dst), 'INVALID_MANIFEST')
@@ -397,6 +399,7 @@ class Migration(w.Engine):
             self.scan_values(self.values[side]['target'], 'target' if side == 'before' else 'render')
         w.need(self.current() == self.values['before'] and self.git_state() == doc['git'], 'BLOCKED_STALE_PLAN', 68)
         self.journal.mkdir(mode=0o700)
+        a.make_private(self.journal)
         w.atomic(self.journal / 'manifest.json', (w.encoded({'backup': str(self.backup), 'id': self.a.approve}), 0o600))
         try:
             ownership = {}
@@ -480,6 +483,7 @@ def main():
         w.need(args.approve and re.fullmatch('[0-9a-f]{64}', args.approve), 'USAGE: --approve MIGRATION_ID required', 64)
     w.layout(args, legacy=True)  # Includes removed legacy paths, before locking.
     with tempfile.TemporaryDirectory(prefix='ai-agent-migration-', dir=str(a.temporary_root())) as tmp:
+        a.make_private(tmp)
         with w.lock(Path(args.source).resolve()):
             engine = Migration(args, Path(tmp))
             if args.command == 'plan':
