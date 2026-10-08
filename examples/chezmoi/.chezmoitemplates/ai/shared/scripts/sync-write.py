@@ -950,6 +950,323 @@ def arguments():
     return a
 
 
+# ---- status（#35）：離線、唯讀的範圍內狀態，從 sync.sh 移植。輸出、exit code、檢查順序逐字沿用
+# sh 版（tests/golden/status 把關）；git 的 argv 前綴與第一個 --version 探測也不變，測試的 git shim
+# 靠固定的參數位置攔截。
+STATUS_OPTIONS = {'--source': 'source', '--destination': 'destination', '--profile': 'profile',
+                  '--repository-profile': 'repository_profile', '--scanner': 'scanner', '--config': 'config'}
+STATUS_EXECUTABLES = frozenset(['.config/ai-agent/bin/sync.sh', '.config/ai-agent/bin/scan-secrets.py',
+                                '.config/ai-agent/bin/sync-write.py', '.config/ai-agent/bin/sync-migrate.py',
+                                '.claude/skills/dotfiles-sync/sync.sh'])
+STATUS_METADATA = ('.chezmoiignore', '.gitignore', '.gitattributes')
+
+
+def status_options(argv):
+    """sh 版的選項迴圈：每個選項都要有值，不可重複，status 不使用 --agent 的身分。"""
+    values = dict(source='', destination='', profile='', repository_profile='', scanner='', config='')
+    while argv:
+        need(len(argv) >= 2, 'USAGE: missing option value', 64)
+        option, value, argv = argv[0], argv[1], argv[2:]
+        if option == '--agent':
+            continue
+        need(option in STATUS_OPTIONS, 'USAGE: unknown option', 64)
+        key = STATUS_OPTIONS[option]
+        need(not values[key], 'USAGE: duplicate ' + key.replace('_', ' '), 64)
+        values[key] = value
+    return values
+
+
+def unlinked(path):
+    """路徑與所有上層目錄都不是重導向；sh 版的 safe_path。"""
+    return not any(api.is_redirected(p) for p in (path, *path.parents))
+
+
+def readable_file(path):
+    return path.is_file() and os.access(path, os.R_OK)
+
+
+def store(root, rel, content):
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+
+class Status:
+    def __init__(self, argv):
+        options = status_options(argv)
+        formatter = HERE / 'scan-secrets.py'
+        # 本地參數檔只補足未明確給定的選項；命令列永遠優先
+        if options['config']:
+            need(api.absolute_path(options['config']), 'USAGE: explicit absolute paths required', 64)
+            try:
+                values = api.load_config(options['config'])
+            except (ValueError, OSError, api.ScanError):
+                raise Block(78, 'INVALID_CONFIG: reviewed local configuration required') from None
+            for key in ('source', 'destination', 'profile', 'repository_profile', 'scanner'):
+                if not options[key] and key in values:
+                    options[key] = values[key]
+        self.profile = options['profile'] or 'claude-codex'
+        scanner = options['scanner'] or str(formatter)
+        for value in (options['source'], options['destination'], scanner):
+            need(api.absolute_path(value), 'USAGE: explicit absolute paths required', 64)
+        for tool in ('git', 'chezmoi'):
+            need(shutil.which(tool), 'MISSING_DEPENDENCY: required command unavailable', 69)
+        self.scanner = Path(scanner)
+        need(self.scanner.is_file() and os.access(self.scanner, os.X_OK),
+             'MISSING_DEPENDENCY: reviewed scanner adapter required', 69)
+        need(formatter.is_file() and (HERE / 'gitleaks-rules.json').is_file(),
+             'MISSING_DEPENDENCY: scanner report validator required', 69)
+        src, dst = Path(options['source']), Path(options['destination'])
+        need(src.is_dir() and dst.is_dir(), 'INVALID_SOURCE: source and destination must exist', 65)
+        self.src, self.dst = src.resolve(), dst.resolve()
+        need(self.profile in api.PROFILES, 'USAGE: invalid profile', 64)
+        self.repository_profile = options['repository_profile'] or self.profile
+        need(self.repository_profile in ('claude-codex', self.profile), 'USAGE: invalid repository profile', 64)
+        try:
+            api.validate_layout(self.src, self.dst, self.profile, False, self.repository_profile)
+        except (ValueError, OSError, api.ScanError):
+            raise Block(65, 'INVALID_LAYOUT: roots or managed paths') from None
+        git_dir = self.src / '.git'
+        need(git_dir.is_dir() and not api.is_redirected(git_dir),
+             'INVALID_SOURCE: regular Git checkout required; worktrees unsupported', 65)
+        for marker in COORDINATION_MARKERS:
+            need(not (git_dir / marker).exists() and not api.is_redirected(git_dir / marker),
+                 'BLOCKED_UNSUPPORTED_COORDINATION: archived bootstrap metadata present; inspect manually', 73)
+        if self.profile != 'codex':
+            self.home('CLAUDE_CONFIG_DIR', '.claude')
+        self.home('AI_AGENT_HOME', '.config/ai-agent')
+        if self.profile != 'claude':
+            self.home('CODEX_HOME', '.codex')
+            override = self.dst / '.codex/AGENTS.override.md'
+            need(unlinked(override), 'INVALID_SOURCE: symlink in override path', 65)
+            need(not override.exists(), 'BLOCKED_OVERRIDE: review AGENTS.override.md before deployment', 65)
+        self.tool_path = os.environ.get('PATH', os.defpath)
+        self.report = []
+
+    def home(self, key, suffix):
+        value = os.environ.get(key, '')
+        need(not value or value == str(self.dst / suffix), 'UNSUPPORTED_HOME: custom ' + key, 65)
+
+    def run(self):
+        # 所有暫存狀態都在選定的根目錄之外，且只有擁有者可讀；結束時整個移除
+        try:
+            work = Path(tempfile.mkdtemp(prefix='ai-agent-status.', dir=str(api.temporary_root())))
+        except OSError:
+            raise Block(70, 'IO_ERROR: temporary directory') from None
+        try:
+            return self.inspect(work)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
+    def git(self, *args):
+        """只讀 Git 中繼資料與物件：最小環境、關閉 hooks 與 fsmonitor、禁止 lazy fetch。回傳 (exit, stdout)。"""
+        command = ['git', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null',
+                   '-C', str(self.src), '--no-lazy-fetch', *args]
+        try:
+            run = subprocess.run(command, env=self.git_env, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=120)
+        except (OSError, subprocess.SubprocessError):
+            return 1, b''
+        return run.returncode, run.stdout
+
+    def skill_paths(self, profile, kind):
+        """這份 source 自己的 skill 集合所對應的 source 或 target 路徑；sh 版的 schema --schema。"""
+        try:
+            return api.mapping(profile, api.source_skills(self.src, profile))[kind == 'target']
+        except (ValueError, OSError, api.ScanError):
+            raise Block(65, 'INVALID_PROFILE') from None
+
+    def retired(self, head_paths, profile, kind):
+        """HEAD 有、工作目錄已經沒有的 skill 的路徑；sh 版的 schema --retired。"""
+        try:
+            present = api.source_skills(self.src, profile)
+            gone = tuple(s for s in api.skills_in(head_paths, profile) if s not in present)
+            paths = api.mapping(profile, gone)[kind == 'target']
+        except (ValueError, OSError, api.ScanError):
+            raise Block(65, 'INVALID_SOURCE: skill set at HEAD') from None
+        return tuple(p for p in paths if api.skill_of(p))
+
+    def inspect(self, work):
+        for name in ('home', 'source', 'render', 'scan', 'cache'):
+            (work / name).mkdir()
+        (work / 'config.toml').write_bytes(b'')
+        self.git_env = dict(api.child_environment(work / 'home', self.tool_path),
+                            GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null', GIT_OPTIONAL_LOCKS='0',
+                            GIT_NO_REPLACE_OBJECTS='1', GIT_TERMINAL_PROMPT='0', GIT_NO_LAZY_FETCH='1',
+                            GIT_ALLOW_PROTOCOL='', GIT_PROTOCOL_FROM_USER='0')
+        # 沒有這個旗標的 Git 在讀任何物件之前就拒絕；旗標加環境一起禁止 lazy fetch 與所有傳輸
+        need(self.git('--version')[0] == 0, 'MISSING_DEPENDENCY: Git with --no-lazy-fetch support required', 69)
+        rc, out = self.git('rev-parse', '--show-toplevel')
+        need(rc == 0 and out.rstrip(b'\n') == os.fsencode(str(self.src)), 'INVALID_SOURCE: source must be Git root', 65)
+        rc, out = self.git('rev-parse', '--verify', 'HEAD')
+        if rc == 0:
+            head = os.fsdecode(out.rstrip(b'\n'))
+        else:
+            # unborn branch：symbolic-ref 必須可讀，而且那個 ref 必須確實不存在
+            rc, out = self.git('symbolic-ref', 'HEAD')
+            need(rc == 0, 'GIT_ERROR: invalid HEAD', 70)
+            need(self.git('show-ref', '--verify', '--quiet', os.fsdecode(out.rstrip(b'\n')))[0] == 1,
+                 'GIT_ERROR: unreadable HEAD', 70)
+            head = ''
+        files = self.skill_paths(self.repository_profile, 'source')
+        # HEAD 還有、工作目錄已經沒有的 skill：等待發布的移除
+        retired, orphans = (), ()
+        if head:
+            head_paths = []
+            for base in ('.chezmoitemplates/ai/shared/skills', 'dot_claude/skills', 'dot_agents/skills'):
+                leaf = 'SKILL.md' if base == '.chezmoitemplates/ai/shared/skills' else 'SKILL.md.tmpl'
+                rc, out = self.git('ls-tree', head, '--', base + '/')
+                need(rc == 0, 'GIT_ERROR: HEAD tree', 70)
+                for line in out.split(b'\n'):
+                    if not line:
+                        continue
+                    candidate = os.fsdecode(line.split(b'\t', 1)[-1]) + '/' + leaf
+                    rc, entry = self.git('ls-tree', head, '--', candidate)
+                    need(rc == 0, 'GIT_ERROR: HEAD tree', 70)
+                    if entry.rstrip(b'\n'):
+                        head_paths.append(candidate)
+            retired = self.retired(head_paths, self.repository_profile, 'source')
+            orphans = self.retired(head_paths, self.profile, 'target')
+        changed = False
+        for rel in files + retired:
+            need(unlinked(self.src / rel), 'INVALID_SOURCE: symlink: ' + rel, 65)
+            gone = rel in retired
+            out_path = work / 'source' / rel
+            if not gone:
+                need(readable_file(self.src / rel), 'INVALID_SOURCE: missing or unreadable: ' + rel, 65)
+                content = (self.src / rel).read_bytes()
+                store(work / 'source', rel, content)
+                store(work / 'scan' / 'source', rel, content)
+                # 封閉的 schema：包裝檔只能是固定的 template 引用，共用文字只允許字面的開頭分隔符
+                if rel.endswith('.tmpl'):
+                    try:
+                        expected = api.wrapper(rel)
+                    except ValueError:
+                        raise Block(65, 'UNSUPPORTED_TEMPLATE') from None
+                    need(content == expected, 'UNSUPPORTED_TEMPLATE: ' + rel, 65)
+                elif rel.startswith('.chezmoitemplates/'):
+                    try:
+                        api.decode_shared(content)
+                    except (ValueError, api.ScanError):
+                        raise Block(65, 'UNSUPPORTED_TEMPLATE: delimiter in shared text: ' + rel) from None
+            # 只讀 blob 的中繼資料與內容，不經過 diff driver 或 clean filter
+            rc, entry = self.git('ls-files', '--stage', '--', rel)
+            need(rc == 0, 'GIT_ERROR: index read', 70)
+            index_mode = index_oid = ''
+            fields = entry.split()
+            if fields:
+                need(len(fields) == 4 and fields[2] == b'0', 'BLOCKED_CONFLICT: ' + rel, 66)
+                index_mode, index_oid = fields[0].decode(), fields[1].decode()
+                need(index_mode in ('100644', '100755'), 'INVALID_SOURCE: index type: ' + rel, 65)
+                rc, blob = self.git('cat-file', 'blob', index_oid)
+                need(rc == 0, 'GIT_ERROR: index blob', 70)
+                store(work / 'scan' / 'index', rel, blob)
+            base_mode = base_oid = ''
+            if head:
+                rc, entry = self.git('ls-tree', head, '--', rel)
+                need(rc == 0, 'GIT_ERROR: HEAD tree', 70)
+                fields = entry.split()
+                if fields:
+                    need(len(fields) == 4 and fields[1] == b'blob', 'INVALID_SOURCE: HEAD type: ' + rel, 65)
+                    base_mode, base_oid = fields[0].decode(), fields[2].decode()
+                    need(base_mode in ('100644', '100755'), 'INVALID_SOURCE: HEAD mode: ' + rel, 65)
+                    rc, blob = self.git('cat-file', 'blob', base_oid)
+                    need(rc == 0, 'GIT_ERROR: HEAD blob', 70)
+                    store(work / 'scan' / 'head', rel, blob)
+            oid = mode = ''
+            if not gone:
+                rc, out = self.git('hash-object', '--no-filters', str(out_path))
+                need(rc == 0, 'GIT_ERROR: hash', 70)
+                oid = out.rstrip(b'\n').decode()
+                mode = '100755' if os.access(self.src / rel, os.X_OK) else '100644'
+            staged = 'clean' if (base_oid, base_mode) == (index_oid, index_mode) else 'changed'
+            working = 'clean' if (oid, mode) == (index_oid, index_mode) else 'changed'
+            if gone:
+                working = 'removed'
+            if (staged, working) != ('clean', 'clean'):
+                changed = True
+                self.report.append('SOURCE: %s staged=%s working=%s' % (rel, staged, working))
+        # 中繼資料檔只掃描與回報，隔離渲染時不解讀
+        for rel in STATUS_METADATA:
+            (work / 'source' / rel).unlink(missing_ok=True)
+
+        drift = False
+        targets = self.skill_paths(self.profile, 'target')
+        render_env = dict(api.child_environment(work / 'home', self.tool_path),
+                          XDG_CONFIG_HOME=str(work / 'home' / 'config'), XDG_CACHE_HOME=str(work / 'cache'),
+                          XDG_DATA_HOME=str(work / 'home' / 'data'))
+        for rel in targets:
+            need(unlinked(self.dst / rel), 'INVALID_SOURCE: target symlink: ' + rel, 65)
+            command = ['chezmoi', '--config', str(work / 'config.toml'), '--source', str(work / 'source'),
+                       '--destination', str(work / 'render'), '--cache', str(work / 'cache'),
+                       '--persistent-state', str(work / 'state.boltdb'), '--refresh-externals=never', '--no-tty',
+                       'cat', str(work / 'render' / rel)]
+            try:
+                run = subprocess.run(command, env=render_env, stdin=subprocess.DEVNULL,
+                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=120)
+            except (OSError, subprocess.SubprocessError):
+                raise Block(70, 'RENDER_ERROR: ' + rel) from None
+            need(run.returncode == 0, 'RENDER_ERROR: ' + rel, 70)
+            rendered = run.stdout
+            store(work / 'scan' / 'render', rel, rendered)
+            state = 'missing'
+            target = self.dst / rel
+            if target.exists():
+                need(readable_file(target), 'INVALID_SOURCE: target type or access: ' + rel, 65)
+                current = target.read_bytes()
+                store(work / 'scan' / 'target', rel, current)
+                state = 'clean' if current == rendered else 'changed'
+                if rel in STATUS_EXECUTABLES and not os.access(target, os.X_OK):
+                    state = 'mode'
+                # 比標準 644/755 寬鬆（group 或 other 可寫入）也要看得見
+                if state == 'clean' and stat.S_IMODE(target.stat().st_mode) & 0o022:
+                    state = 'mode'
+            if state != 'clean':
+                drift = True
+                self.report.append('TARGET: %s %s' % (rel, state))
+        # 移除的 skill 的輸出會留在部署區，直到核准的 plan 套用移除
+        for rel in orphans:
+            need(unlinked(self.dst / rel), 'INVALID_SOURCE: target symlink: ' + rel, 65)
+            target = self.dst / rel
+            if target.exists():
+                need(readable_file(target), 'INVALID_SOURCE: target type or access: ' + rel, 65)
+                store(work / 'scan' / 'target', rel, target.read_bytes())
+                drift = True
+                self.report.append('TARGET: %s orphan' % rel)
+
+        # scanner 是受信任的可執行程式，不是沙箱：離線、唯讀、經過審閱；它的輸出永遠不轉發
+        report_path = work / 'scanner-report.json'
+        try:
+            run = subprocess.run(api.scanner_command(self.scanner) + [str(work / 'scan'), str(report_path)],
+                                 env=api.child_environment(work / 'home', self.tool_path), stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
+            scan_rc = run.returncode
+        except (OSError, subprocess.SubprocessError):
+            scan_rc = 126
+        try:
+            findings = api.validate_report(api.read_json(report_path), scan_rc)
+        except (api.ScanError, OSError, ValueError, KeyError, TypeError):
+            raise Block(70, 'SCANNER_ERROR: invalid or missing structured report') from None
+        if scan_rc == 10:
+            for item in findings:
+                print('FINDING: %s:%d rule=%s' % (item['file'], item['line'], item['rule']))
+            raise Block(67, 'BLOCKED_SECRET: scoped snapshot; values withheld')
+        need(scan_rc != 69, 'MISSING_DEPENDENCY: pinned Gitleaks required on PATH', 69)
+        need(scan_rc == 0, 'SCANNER_ERROR: scan failed; no clean result', 70)
+        for line in self.report:
+            print(line)
+        if drift:
+            raise Block(2, 'DRIFT: generated files differ; no changes applied')
+        print('OK: source changes within v2 scope; not push approval' if changed
+              else 'NO_CHANGES: v2 scope only; history and unrelated files not assessed')
+        return 0
+
+
+def status_command(argv):
+    os.umask(0o077)
+    return Status(argv).run()
+
+
 def doctor(args):
     """Read-only bring-up checks after deployment. Prints OK/WARN/FAIL lines; exit 1 on any FAIL."""
     counts = dict(OK=0, WARN=0, FAIL=0)
@@ -1286,6 +1603,19 @@ def main():
 
 
 def cli():
+    if len(sys.argv) > 1 and sys.argv[1] == 'status':
+        # status 沿用 sync.sh 的輸出合約：只有報告行、標籤與 exit code，沒有 DIAGNOSTIC 行
+        try:
+            return status_command(sys.argv[2:])
+        except Block as error:
+            print(error.label)
+            return error.code
+        except KeyboardInterrupt:
+            return 130
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, RecursionError,
+                subprocess.SubprocessError):
+            print('IO_ERROR: operation stopped; no raw tool output exposed')
+            return 70
     try:
         return main()
     except Block as error:

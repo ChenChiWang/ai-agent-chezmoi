@@ -17,8 +17,9 @@ protocol (`DEFERRED_READERS`, receipts, kernel mutex) was removed from the engin
 
 ## Design and scope
 
-The POSIX `sync.sh` entrypoint retains the offline status implementation and
-routes mutations to the sibling `sync-write.py`. Python 3.9+ standard-library
+The POSIX `sync.sh` entrypoint is a thin shell that hands every command, including
+the offline `status`, to the sibling `sync-write.py` (since 2026-10-09, #35; the
+recorded output of `status` is in `tests/golden/status/`). Python 3.9+ standard-library
 facilities provide structured snapshots, shared locks, isolated Git indexes,
 atomic file replacement and recovery records. There is one shared engine for
 both agents, and no new runtime Python package dependency.
@@ -366,8 +367,8 @@ variables Git and chezmoi need (`SystemRoot`, `PATHEXT`, `TEMP`, `COMSPEC`, with
 `USERPROFILE` pointing at the isolated home), a drive-absolute path format and the
 scanner run through the current interpreter. The owner and permission tests return
 "not private" there, so a parameter file or plan is refused rather than accepted
-unchecked, until an ACL implementation replaces them. `sync.sh` keeps its own POSIX
-assumptions until `status` moves to Python.
+unchecked, until an ACL implementation replaces them. `status` runs through the same
+layer since it moved to Python.
 
 ## Transactions and recovery
 

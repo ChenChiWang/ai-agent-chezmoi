@@ -11,10 +11,12 @@ Current state only. Older round-by-round records are archived in
   pure refactor. Windows gets `%TEMP%`, the retries and environment variables it needs,
   and a refusal wherever an equivalent check does not exist yet. The engine still does
   not run on native Windows: ACLs, `status` and an entry point are the next steps.
-- **Status golden** (#35, W3 first half): `tests/test-status-golden.sh` records the complete
-  output and exit code of `status` for 31 cases under `tests/golden/status/` and compares
-  them byte for byte; `--record` regenerates them. No engine change. The Python port of
-  `status` is the second half and must leave every file unchanged.
+- **Status in Python** (#35, W3): `tests/test-status-golden.sh` first recorded the complete
+  output and exit code of the shell `status` for 31 cases under `tests/golden/status/`;
+  `--record` regenerates them. Then `status` moved into `sync-write.py` with the same
+  checks in the same order, the same Git argv prefix and the same labels; `sync.sh` is a
+  thin shell for every command. All 31 golden files, `test-status.sh` and
+  `test-offline-status.py` are unchanged.
 - **Executable bit** (#31, W1): first step of the plan, a correctness fix for every platform. The push candidate tree took `100644`/`100755` from the filesystem, so a push
 from native Windows, where `stat` reports `666` for every file, would have turned the
 three executable engine scripts into `100644` for every machine; on POSIX a `chmod` on
