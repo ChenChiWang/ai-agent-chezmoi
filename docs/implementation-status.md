@@ -11,6 +11,13 @@ Current state only. Older round-by-round records are archived in
   pure refactor. Windows gets `%TEMP%`, the retries and environment variables it needs,
   and a refusal wherever an equivalent check does not exist yet. The engine still does
   not run on native Windows: ACLs, `status` and an entry point are the next steps.
+- **Windows ACLs** (#38, W4a): the owner and permission tests of the platform layer are
+  real on Windows, through `ctypes` and SDDL, with the strict policy of POSIX `600`/`700`
+  (user, SYSTEM, Administrators only). Everything the engine creates privately gets a
+  protected DACL through `icacls` with SIDs and is read back. Verified on the Windows 11
+  machine: a profile file with the inherited sandbox group is not private, `make_private`
+  makes it so, and `load_config` accepts it. Reparse points and the Windows temporary
+  root are next (W4b); mode semantics wait for the entry point (W5).
 - **Status in Python** (#35, W3): `tests/test-status-golden.sh` first recorded the complete
   output and exit code of the shell `status` for 31 cases under `tests/golden/status/`;
   `--record` regenerates them. Then `status` moved into `sync-write.py` with the same

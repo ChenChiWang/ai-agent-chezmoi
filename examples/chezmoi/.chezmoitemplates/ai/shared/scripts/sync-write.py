@@ -233,6 +233,8 @@ def atomic(path, value):
             os.fchmod(f.fileno(), value[1])
             os.fsync(f.fileno())
         api.replace(name, path)
+        if value[1] & 0o077 == 0:
+            api.make_private(path)
         fsync_dir(path.parent)
     except BaseException as error:
         diagnostics.capture(error)
@@ -686,6 +688,7 @@ class Engine:
         need(self.state() == self.before, 'BLOCKED_STALE_PLAN', 68)
         journal = self.gd / 'ai-agent-sync-transaction'
         journal.mkdir(mode=0o700)
+        api.make_private(journal)
         diagnostics.transaction_started = True
         backups, committed, ref_attempted, made = [], False, False, []
         index_lock = self.gd / 'index.lock'
@@ -878,6 +881,7 @@ def resolve_plan(a, values):
     plan_dir = Path(values['plan_dir'])
     if a.command == 'plan':
         plan_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        api.make_private(plan_dir)
         stamp = time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())
         a.plan = str(plan_dir / ('sync-plan-%s-%s-%s.json' % (a.operation, stamp, secrets.token_hex(4))))
         return
@@ -1051,6 +1055,7 @@ class Status:
         # 所有暫存狀態都在選定的根目錄之外，且只有擁有者可讀；結束時整個移除
         try:
             work = Path(tempfile.mkdtemp(prefix='ai-agent-status.', dir=str(api.temporary_root())))
+            api.make_private(work)
         except OSError:
             raise Block(70, 'IO_ERROR: temporary directory') from None
         try:
@@ -1220,7 +1225,7 @@ class Status:
                 if rel in STATUS_EXECUTABLES and not os.access(target, os.X_OK):
                     state = 'mode'
                 # 比標準 644/755 寬鬆（group 或 other 可寫入）也要看得見
-                if state == 'clean' and stat.S_IMODE(target.stat().st_mode) & 0o022:
+                if state == 'clean' and api.foreign_writable(target, target.stat()):
                     state = 'mode'
             if state != 'clean':
                 drift = True
@@ -1306,8 +1311,8 @@ def doctor(args):
         if 'plan_dir' in values:
             plan_dir = Path(values['plan_dir'])
             if plan_dir.is_dir() and os.access(plan_dir, os.W_OK):
-                mode = stat.S_IMODE(plan_dir.stat().st_mode)
-                report('OK' if mode == 0o700 else 'WARN', 'plan_dir', str(plan_dir) + (' mode %o' % mode), '' if mode == 0o700 else 'chmod 700 ' + str(plan_dir))
+                ok, detail, fix = api.private_directory_report(plan_dir)
+                report('OK' if ok else 'WARN', 'plan_dir', str(plan_dir) + detail, fix)
             else:
                 report('FAIL', 'plan_dir', str(plan_dir) + ' missing or not writable', 'mkdir -p -m 700 ' + str(plan_dir))
         else:
@@ -1348,7 +1353,7 @@ def doctor(args):
             report('WARN', 'chezmoi_umask', 'not set; deployed modes follow the shell umask' if mask == 0 else 'unknown or allows group/other write',
                    'add "umask = 0o022" to ~/.config/chezmoi/chezmoi.toml')
         loose = [p for p in deployed
-                 if (dst / p).is_file() and not api.is_redirected(dst / p) and stat.S_IMODE((dst / p).stat().st_mode) & 0o022]
+                 if (dst / p).is_file() and not api.is_redirected(dst / p) and api.foreign_writable(dst / p, (dst / p).stat())]
         report('OK' if not loose else 'WARN', 'permissions',
                'no deployed file is group/other writable' if not loose else '%d group/other writable: %s' % (len(loose), ', '.join(loose[:3]) + (' ...' if len(loose) > 3 else '')),
                '' if not loose else 'set the chezmoi umask, then chezmoi apply (or approve the next in/push plan)')
@@ -1432,6 +1437,7 @@ def check(args):
         print('CHECK_SKIPPED: sandbox network disabled; remote freshness unknown')
         return 0
     temporary = tempfile.TemporaryDirectory(prefix='ai-agent-check-', dir=str(api.temporary_root()))
+    api.make_private(temporary.name)
     try:
         engine = Engine(args, Path(temporary.name))
         remote_head = engine.fetch()
@@ -1451,6 +1457,7 @@ def check(args):
     print('REMOTE: ' + result)
     if state_file is not None:
         state_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        api.make_private(state_file.parent)
         target = state_file.parent.resolve() / state_file.name
         atomic(target, (encoded(dict(checked=int(time.time()), head=engine.head, remote_head=remote_head,
                                      result=result)), 0o600))
@@ -1468,6 +1475,7 @@ def lock(source):
         path.mkdir(mode=0o700)
     except FileExistsError:
         raise Block(73, 'BLOCKED_LOCK') from None
+    api.make_private(path)
     try:
         atomic(path / 'owner.json', (encoded(dict(pid=os.getpid(), started=int(time.time()))), 0o600))
         yield
@@ -1506,7 +1514,7 @@ def main():
     approved = None
     if args.command != 'plan':
         value = read(plan_path)
-        need(api.private_mode(value[1]), 'INVALID_PLAN_PERMISSIONS')
+        need(api.private_mode(plan_path, value[1]), 'INVALID_PLAN_PERMISSIONS')
         approved = value[0]
         if args.auto:
             args.approve = digest(approved)
@@ -1526,6 +1534,7 @@ def main():
         need(type(document.get('created')) is int and 0 <= time.time() - document['created'] < 3600,
              'BLOCKED_EXPIRED_PLAN', 68)
     temporary = tempfile.TemporaryDirectory(prefix='ai-agent-write-', dir=str(api.temporary_root()))
+    api.make_private(temporary.name)
     try:
         engine = Engine(args, Path(temporary.name))
         result = engine.build()
@@ -1538,6 +1547,7 @@ def main():
                 blob = encoded(document)
                 with plan_path.open('xb') as output:
                     output.write(blob)
+                api.make_private(plan_path)
                 base = result['baseline'] if result['operation'] == 'push' else result['state']['source']
                 for label, names in (('SKILL_ADDED: ', set(engine.skill_set) - set(engine.base_skills)),
                                      ('SKILL_REMOVED: ', set(engine.base_skills) - set(engine.skill_set))):
