@@ -273,6 +273,77 @@ class EngineTests(ScannerTests):
         self.assertFalse(b"FINDING:" in result.stdout or synthetic().encode() in result.stdout + result.stderr)
 
 
+class PlatformTests(unittest.TestCase):
+    """平台層（#33）：POSIX 分支逐字保留原本的行為；Windows 分支以旗標模擬，不需要 Windows 機器。"""
+
+    def windows(self):
+        return mock.patch.dict(API, WINDOWS=True)
+
+    def test_posix_behaviour_unchanged(self):
+        self.assertFalse(API["WINDOWS"])
+        self.assertEqual(API["temporary_root"](), Path("/tmp"))
+        self.assertTrue(API["absolute_path"]("/home/user"))
+        self.assertFalse(API["absolute_path"]("C:\\Users\\user"))
+        self.assertFalse(API["absolute_path"]("relative"))
+        self.assertEqual(API["child_environment"](Path("/h"), "/bin"), {"PATH": "/bin", "HOME": "/h", "LC_ALL": "C"})
+        self.assertEqual(API["child_environment"](Path("/h"))["PATH"], os.defpath)
+        self.assertTrue(API["private_mode"](0o600))
+        self.assertFalse(API["private_mode"](0o640))
+        private = Path(self.temp.name) / "private"
+        private.write_bytes(b"{}")
+        private.chmod(0o600)
+        self.assertTrue(API["private_file"](private.stat()))
+        private.chmod(0o664)
+        self.assertFalse(API["private_file"](private.stat()))
+        self.assertEqual(API["scanner_command"](Path("/s.py")), ["/s.py"])
+        link = Path(self.temp.name) / "link"
+        link.symlink_to(private)
+        self.assertTrue(API["is_redirected"](link))
+        self.assertFalse(API["is_redirected"](private))
+        self.assertFalse(API["is_redirected"](Path(self.temp.name) / "missing"))
+        fd = API["open_directory"](Path(self.temp.name))
+        self.assertIsInstance(fd, int)
+        os.close(fd)
+        # POSIX 的 replace 不重試：第一次失敗就拋出
+        with mock.patch("os.replace", side_effect=PermissionError) as replaced:
+            with self.assertRaises(PermissionError):
+                API["replace"]("a", "b")
+        self.assertEqual(replaced.call_count, 1)
+
+    def test_windows_branches(self):
+        with self.windows():
+            self.assertEqual(API["temporary_root"](), Path(tempfile.gettempdir()))
+            self.assertTrue(API["absolute_path"]("C:\\Users\\user"))
+            self.assertTrue(API["absolute_path"]("\\\\server\\share\\x"))
+            self.assertFalse(API["absolute_path"]("/home/user"))
+            self.assertFalse(API["absolute_path"]("\\rooted-without-drive"))
+            self.assertFalse(API["absolute_path"]("C:relative"))
+            with mock.patch.dict(os.environ, {"SystemRoot": "C:\\Windows", "PATHEXT": ".EXE", "COMSPEC": "cmd.exe",
+                                              "SystemDrive": "C:", "TEMP": "C:\\t", "TMP": "C:\\t"}):
+                env = API["child_environment"](Path("C:\\h"), "C:\\bin")
+            self.assertEqual(env, {"PATH": "C:\\bin", "HOME": "C:\\h", "LC_ALL": "C", "USERPROFILE": "C:\\h",
+                                   "SystemRoot": "C:\\Windows", "SystemDrive": "C:", "PATHEXT": ".EXE",
+                                   "TEMP": "C:\\t", "TMP": "C:\\t", "COMSPEC": "cmd.exe"})
+            # 做不到等價的擁有者與權限檢查：一律不通過，不略過
+            self.assertFalse(API["private_mode"](0o600))
+            self.assertFalse(API["private_file"](Path(__file__).stat()))
+            self.assertIsNone(API["open_directory"](Path(self.temp.name)))
+            self.assertEqual(API["scanner_command"](Path("C:\\s.py")), [sys.executable, "C:\\s.py"])
+            # replace：暫時被佔用時重試，持續失敗就拋出
+            with mock.patch("os.replace", side_effect=[PermissionError(), PermissionError(), None]) as replaced, \
+                    mock.patch("time.sleep") as slept:
+                API["replace"]("a", "b")
+            self.assertEqual((replaced.call_count, slept.call_count), (3, 2))
+            with mock.patch("os.replace", side_effect=PermissionError) as replaced, mock.patch("time.sleep"):
+                with self.assertRaises(PermissionError):
+                    API["replace"]("a", "b")
+            self.assertEqual(replaced.call_count, 5)
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="platform-test-", dir="/tmp")
+        self.addCleanup(self.temp.cleanup)
+
+
 if __name__ == "__main__":
     if not REAL_GITLEAKS:
         sys.exit("MISSING_DEPENDENCY: put Gitleaks 8.30.1 on PATH; real tests are not skipped")

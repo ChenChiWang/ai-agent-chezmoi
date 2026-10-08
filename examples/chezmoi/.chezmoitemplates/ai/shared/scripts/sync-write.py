@@ -154,7 +154,7 @@ def encoded(value):
 
 def safe(path):
     for p in (path, *path.parents):
-        need(not p.is_symlink(), 'BLOCKED_SYMLINK')
+        need(not api.is_redirected(p), 'BLOCKED_SYMLINK')
 
 
 def layout(args, legacy=False):
@@ -210,7 +210,9 @@ def effective_mode(current, canonical):
 
 def fsync_dir(path):
     safe(path)
-    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    fd = api.open_directory(path)
+    if fd is None:
+        return
     try:
         os.fsync(fd)
     except BaseException as error:
@@ -230,7 +232,7 @@ def atomic(path, value):
             f.flush()
             os.fchmod(f.fileno(), value[1])
             os.fsync(f.fileno())
-        os.replace(name, path)
+        api.replace(name, path)
         fsync_dir(path.parent)
     except BaseException as error:
         diagnostics.capture(error)
@@ -291,8 +293,8 @@ class Engine:
         # Refuse indirection/special repositories before invoking Git against them.
         for name in ('shallow', 'commondir', 'objects/info/alternates', 'info/grafts'):
             need(not (self.gd / name).exists(), 'UNSUPPORTED_REPOSITORY')
-        self.env = dict(PATH=os.environ.get('PATH', os.defpath), HOME=str(tmp / 'home'),
-                        LC_ALL='C', GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null',
+        self.env = dict(api.child_environment(tmp / 'home', os.environ.get('PATH', os.defpath)),
+                        GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null',
                         GIT_NO_REPLACE_OBJECTS='1', GIT_NO_LAZY_FETCH='1',
                         GIT_ALLOW_PROTOCOL='', GIT_PROTOCOL_FROM_USER='0', GIT_TERMINAL_PROMPT='0')
         (tmp / 'home').mkdir()
@@ -429,7 +431,7 @@ class Engine:
                 target.write_bytes(content)
             report = root / 'report.json'
             try:
-                run = subprocess.run([str(self.scanner), str(root / 'snapshot'), str(report)],
+                run = subprocess.run(api.scanner_command(self.scanner) + [str(root / 'snapshot'), str(report)],
                                      cwd=self.tmp, env=self.env, capture_output=True, timeout=120)
                 findings = api.validate_report(api.read_json(report), run.returncode)
             except (api.ScanError, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
@@ -670,7 +672,7 @@ class Engine:
                             shutil.copyfileobj(src, f)
                             f.flush()
                             os.fsync(f.fileno())
-                        os.replace(temporary, dest)
+                        api.replace(temporary, dest)
                     except BaseException as error:
                         diagnostics.capture(error)
                         raise
@@ -882,7 +884,7 @@ def resolve_plan(a, values):
     need(plan_dir.is_dir(), 'PLAN_NOT_FOUND', 66)
     plan_dir = plan_dir.resolve()
     for candidate in sorted(plan_dir.glob('sync-plan-*.json'))[:1000]:
-        if candidate.is_symlink():
+        if api.is_redirected(candidate):
             continue
         value = read(candidate, missing=True)
         if value and digest(value[0]) == a.approve:
@@ -1028,7 +1030,7 @@ def doctor(args):
             report('WARN', 'chezmoi_umask', 'not set; deployed modes follow the shell umask' if mask == 0 else 'unknown or allows group/other write',
                    'add "umask = 0o022" to ~/.config/chezmoi/chezmoi.toml')
         loose = [p for p in deployed
-                 if (dst / p).is_file() and not (dst / p).is_symlink() and stat.S_IMODE((dst / p).stat().st_mode) & 0o022]
+                 if (dst / p).is_file() and not api.is_redirected(dst / p) and stat.S_IMODE((dst / p).stat().st_mode) & 0o022]
         report('OK' if not loose else 'WARN', 'permissions',
                'no deployed file is group/other writable' if not loose else '%d group/other writable: %s' % (len(loose), ', '.join(loose[:3]) + (' ...' if len(loose) > 3 else '')),
                '' if not loose else 'set the chezmoi umask, then chezmoi apply (or approve the next in/push plan)')
@@ -1111,7 +1113,7 @@ def check(args):
     if os.environ.get('CODEX_SANDBOX_NETWORK_DISABLED') == '1':
         print('CHECK_SKIPPED: sandbox network disabled; remote freshness unknown')
         return 0
-    temporary = tempfile.TemporaryDirectory(prefix='ai-agent-check-', dir='/tmp')
+    temporary = tempfile.TemporaryDirectory(prefix='ai-agent-check-', dir=str(api.temporary_root()))
     try:
         engine = Engine(args, Path(temporary.name))
         remote_head = engine.fetch()
@@ -1173,7 +1175,7 @@ def main():
     # 封存的 bootstrap／cohort 協定留下的標記一律拒絕並原樣保留；不進入 lock 或任何寫入。
     for name in COORDINATION_MARKERS:
         marker = Path(args.source).resolve() / '.git' / name
-        need(not marker.exists() and not marker.is_symlink(), 'BLOCKED_UNSUPPORTED_COORDINATION', 73)
+        need(not marker.exists() and not api.is_redirected(marker), 'BLOCKED_UNSUPPORTED_COORDINATION', 73)
     if args.command == 'check':
         return check(args)
     plan_path = Path(args.plan)
@@ -1181,12 +1183,12 @@ def main():
     # 目錄別名（例如 macOS /tmp）先正規化；plan 本身不得是 symlink，且必須位於
     # source 與所有部署區域之外。destination HOME 下的其他位置是允許的。
     plan_path = plan_path.parent.resolve() / plan_path.name
-    need(not plan_path.is_symlink(), 'BLOCKED_SYMLINK')
+    need(not api.is_redirected(plan_path), 'BLOCKED_SYMLINK')
     need(external(plan_path, Path(args.source).resolve(), Path(args.destination).resolve()), 'INVALID_PLAN_PATH')
     approved = None
     if args.command != 'plan':
         value = read(plan_path)
-        need(value[1] & 0o077 == 0, 'INVALID_PLAN_PERMISSIONS')
+        need(api.private_mode(value[1]), 'INVALID_PLAN_PERMISSIONS')
         approved = value[0]
         if args.auto:
             args.approve = digest(approved)
@@ -1205,7 +1207,7 @@ def main():
             need(len(value) <= 4096 and not any(ord(c) < 32 for c in value), 'INVALID_PLAN')
         need(type(document.get('created')) is int and 0 <= time.time() - document['created'] < 3600,
              'BLOCKED_EXPIRED_PLAN', 68)
-    temporary = tempfile.TemporaryDirectory(prefix='ai-agent-write-', dir='/tmp')
+    temporary = tempfile.TemporaryDirectory(prefix='ai-agent-write-', dir=str(api.temporary_root()))
     try:
         engine = Engine(args, Path(temporary.name))
         result = engine.build()
