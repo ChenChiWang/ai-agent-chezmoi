@@ -3,6 +3,17 @@
 Current state only. Older round-by-round records are archived in
 [history/implementation-status-2026-09-25.md](history/implementation-status-2026-09-25.md).
 
+## 2026-10-09 — the executable bit belongs to Git
+
+First step of the native Windows plan (#15, W1), a correctness fix for every platform
+(#31). The push candidate tree took `100644`/`100755` from the filesystem, so a push
+from native Windows, where `stat` reports `666` for every file, would have turned the
+three executable engine scripts into `100644` for every machine; on POSIX a `chmod` on
+a source file was published as a change. The commit now takes each path's mode from
+`HEAD` (`644` for a new path), execution sets a disagreeing source file to Git's mode
+and the plan lists it. Template content leaves console output, plan documents and
+`status` unchanged.
+
 ## 2026-09-27 — the skill set belongs to the source
 
 Tracking issue #17. The set of synchronized skills was a tuple in the engine; adding a

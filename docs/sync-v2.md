@@ -364,7 +364,12 @@ stricter than that (for example `600` or `700`) is kept. A looser mode, with gro
 other write (for example `664` from a `chezmoi apply` under umask `002`, or `777`), is a
 change: the plan lists it as `TARGET: <path> sha256=... mode=664->644`, execution
 tightens it, and `status` reports it as `TARGET: <path> mode`. `in` applies the same
-rule to the source files it writes. Set `umask = 0o022` in the machine's chezmoi config
+rule to the source files it writes. The executable bit of a source file belongs to
+Git: a push commit takes each path's mode from `HEAD`, and `644` for a path `HEAD`
+lacks, never from the filesystem (since 2026-10-09, #31; a Windows `stat` reports
+`666` for every file). When the filesystem disagrees, the plan lists the file as
+`SOURCE: <path> ... mode=0o755` and execution sets Git's mode, keeping a stricter
+existing one. Set `umask = 0o022` in the machine's chezmoi config
 so chezmoi itself never deploys looser modes; `doctor` warns when it is missing. The
 branch ref update compares the
 expected old OID; see [Git update-ref](https://git-scm.com/docs/git-update-ref).
