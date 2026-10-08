@@ -1,0 +1,2 @@
+BLOCKED_CONFLICT: .chezmoitemplates/ai/adapters/claude.md
+exit: 66

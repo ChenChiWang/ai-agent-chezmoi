@@ -1,0 +1,7 @@
+SOURCE: .chezmoitemplates/ai/shared/skills/sample-beta/SKILL.md staged=clean working=removed
+SOURCE: dot_claude/skills/sample-beta/SKILL.md.tmpl staged=clean working=removed
+SOURCE: dot_agents/skills/sample-beta/SKILL.md.tmpl staged=clean working=removed
+TARGET: .claude/skills/sample-beta/SKILL.md orphan
+TARGET: .agents/skills/sample-beta/SKILL.md orphan
+DRIFT: generated files differ; no changes applied
+exit: 2

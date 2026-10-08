@@ -1,0 +1,2 @@
+UNSUPPORTED_TEMPLATE: dot_codex/AGENTS.md.tmpl
+exit: 65

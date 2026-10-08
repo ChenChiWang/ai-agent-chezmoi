@@ -1,0 +1,2 @@
+INVALID_LAYOUT: roots or managed paths
+exit: 65

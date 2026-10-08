@@ -1,0 +1,2 @@
+UNSUPPORTED_TEMPLATE: delimiter in shared text: .chezmoitemplates/ai/shared/instructions.md
+exit: 65
