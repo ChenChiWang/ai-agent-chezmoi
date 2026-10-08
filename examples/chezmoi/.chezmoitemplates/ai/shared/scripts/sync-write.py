@@ -586,7 +586,9 @@ class Engine:
                 self.candidate = self.working
         else:
             commits = self.history(self.remote_head, self.head)
-            self.candidate = self.working
+            # 執行位元由 git 決定：commit 用 HEAD 的模式，HEAD 沒有的新檔案一律 644。檔案系統的位元
+            # 不可信（Windows 的 stat 對所有檔案回報 666），只在執行時被收回成 git 的值（#31）
+            self.candidate = {p: (v[0], baseline[p][1] if p in baseline else 0o644) for p, v in self.working.items()}
         rendered = self.render(self.candidate)
         self.scan(rendered, 'render')
         self.skill_set = self.skills(self.candidate)
@@ -638,6 +640,16 @@ class Engine:
                     state=self.before, remote_head=self.remote_head, commits=commits,
                     baseline=summary(baseline), candidate=summary(self.candidate), rendered=summary(self.rendered),
                     tree=self.candidate_tree, tools=tools)
+
+    def source_modes(self):
+        # push 不改 source 的內容，但執行位元以 git 為準：檔案系統不一致時收回成 git 的模式，
+        # 規則與 in 寫入 source 時相同（比標準嚴格的現有權限保留）
+        changes = []
+        for p, (content, mode) in self.candidate.items():
+            current = self.working[p][1]
+            if canonical_mode(current) != canonical_mode(mode):
+                changes.append((self.src / p, (content, effective_mode(current, canonical_mode(mode)))))
+        return changes
 
     def transfer_objects(self):
         diagnostics.mark('transfer_objects')
@@ -788,6 +800,7 @@ class Engine:
             return
         new_head = self.head
         applied = False
+        fixes = self.source_modes()
         if self.candidate_tree != self.git('rev-parse', self.head + '^{tree}').decode().strip():
             need(self.a.author_name and self.a.author_email, 'USAGE: author identity required', 64)
             env = self.env.copy()
@@ -801,10 +814,10 @@ class Engine:
             self.history(self.remote_head, new_head)
             need(self.git('rev-parse', new_head + '^{tree}').decode().strip() == self.candidate_tree)
             self.transfer_objects()
-            self.transact(new_head, [(self.dst / p, v) for p, v in self.rendered.items()],
+            self.transact(new_head, fixes + [(self.dst / p, v) for p, v in self.rendered.items()],
                           (self.iso / 'index').read_bytes())
         else:
-            changes = [(self.dst / p, v) for p, v in self.rendered.items() if read(self.dst / p, missing=True) != v]
+            changes = fixes + [(self.dst / p, v) for p, v in self.rendered.items() if read(self.dst / p, missing=True) != v]
             if changes:
                 self.transact(new_head, changes, read(self.gd / 'index')[0])
                 applied = True
@@ -1220,9 +1233,9 @@ def main():
                                   + (after[0] + ' mode=' + oct(canonical_mode(after[1])) if after else 'absent'))
                         continue
                     if result['operation'] == 'push':
-                        # commit 只記錄內容與執行位元，umask 造成的 664 不算變更
+                        # commit 的模式來自 HEAD；檔案系統的執行位元不一致時收回，umask 造成的 664 不算變更
                         mode = canonical_mode(after[1])
-                        changed = after[0] != before[0] or mode != canonical_mode(before[1])
+                        changed = after[0] != before[0] or canonical_mode(result['state']['source'][p][1]) != mode
                     else:
                         # in 只在遠端領先時寫入 source，實際權限依現有權限決定
                         mode = effective_mode(before[1], canonical_mode(after[1]))
