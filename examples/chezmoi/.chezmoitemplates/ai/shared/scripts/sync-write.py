@@ -1097,7 +1097,8 @@ class Status:
         # 沒有這個旗標的 Git 在讀任何物件之前就拒絕；旗標加環境一起禁止 lazy fetch 與所有傳輸
         need(self.git('--version')[0] == 0, 'MISSING_DEPENDENCY: Git with --no-lazy-fetch support required', 69)
         rc, out = self.git('rev-parse', '--show-toplevel')
-        need(rc == 0 and out.rstrip(b'\n') == os.fsencode(str(self.src)), 'INVALID_SOURCE: source must be Git root', 65)
+        # 以 Path 比較：Git 在 Windows 印出正斜線的路徑；POSIX 上與字串比較等價
+        need(rc == 0 and Path(os.fsdecode(out.rstrip(b'\n'))) == self.src, 'INVALID_SOURCE: source must be Git root', 65)
         rc, out = self.git('rev-parse', '--verify', 'HEAD')
         if rc == 0:
             head = os.fsdecode(out.rstrip(b'\n'))
