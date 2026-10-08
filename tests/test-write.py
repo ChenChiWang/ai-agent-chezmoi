@@ -195,6 +195,47 @@ sys.exit(10 if secret else 0)
         self.assertEqual((self.src / REL).stat().st_mode & 0o777, 0o644)
         self.assertEqual(settings.stat().st_mode & 0o777, 0o600)
 
+    def test_executable_bit_follows_git_not_the_filesystem(self):
+        # 執行位元以 HEAD 為準（#31）：檔案系統的位元不一致時（Windows 的 stat 對所有檔案回報 666，
+        # 或 POSIX 上手動 chmod），commit 保留 git 的模式，執行時把 source 檔案收回成 git 的值
+        script = '.chezmoitemplates/ai/shared/scripts/sync-write.py'
+        (self.src / script).chmod(0o644)
+        (self.src / REL).chmod(0o755)
+        self.edit()
+        result = self.plan()
+        self.assertIn(('SOURCE: %s before=' % script).encode(), result)
+        self.assertIn(b' mode=0o755\n', result)
+        self.assertIn(('SOURCE: %s before=' % REL).encode(), result)
+        self.assertIn(b'OK: approved commit pushed', self.execute())
+        self.assertEqual(self.git(self.src, 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'), REL)
+        self.assertEqual((self.head_modes()[script], self.head_modes()[REL]), ('100755', '100644'))
+        self.assertEqual((self.src / script).stat().st_mode & 0o777, 0o755)
+        self.assertEqual((self.src / REL).stat().st_mode & 0o777, 0o644)
+        self.assertEqual(self.git(self.src, 'status', '--porcelain'), '')
+        self.assertIn('NO_CHANGES', self.skill_status())
+        # 只有執行位元不一致、沒有內容變更：plan 列出，執行時收回，沒有 commit
+        head = self.git(self.src, 'rev-parse', 'HEAD')
+        (self.src / script).chmod(0o644)
+        self.assertIn('SOURCE: %s before=' % script, self.replan())
+        self.assertIn(b'OK: generated outputs applied; nothing to publish', self.execute())
+        self.assertEqual(self.git(self.src, 'rev-parse', 'HEAD'), head)
+        self.assertEqual((self.src / script).stat().st_mode & 0o777, 0o755)
+        # 新增的 skill 檔案在檔案系統上是 755：commit 仍為 100644
+        self.add_skill(self.src)
+        for rel in self.skill_paths(self.SKILL):
+            (self.src / rel).chmod(0o755)
+        self.assertIn('SKILL_ADDED: ' + self.SKILL, self.replan())
+        self.execute()
+        modes = self.head_modes()
+        for rel in self.skill_paths(self.SKILL):
+            self.assertEqual(modes[rel], '100644')
+            self.assertEqual((self.src / rel).stat().st_mode & 0o777, 0o644)
+        self.assertEqual(self.git(self.src, 'status', '--porcelain'), '')
+
+    def head_modes(self):
+        return {line.split('\t')[1]: line.split()[0]
+                for line in self.git(self.src, 'ls-tree', '-r', 'HEAD').splitlines()}
+
     def test_stale_source_destination_index_branch_remote(self):
         self.edit()
         self.plan()
