@@ -277,7 +277,8 @@ class PlatformTests(unittest.TestCase):
     """平台層（#33）：POSIX 分支逐字保留原本的行為；Windows 分支以旗標模擬，不需要 Windows 機器。"""
 
     def windows(self):
-        return mock.patch.dict(API, WINDOWS=True)
+        # runpy 回傳的是模組 globals 的複本；要改到函式真正讀取的那份
+        return mock.patch.dict(API["replace"].__globals__, WINDOWS=True)
 
     def test_posix_behaviour_unchanged(self):
         self.assertFalse(API["WINDOWS"])
