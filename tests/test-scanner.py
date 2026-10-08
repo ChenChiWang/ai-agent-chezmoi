@@ -8,6 +8,7 @@ import random
 import runpy
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -379,6 +380,32 @@ class PlatformTests(unittest.TestCase):
         denied = API["parse_sddl"]("O:" + self.ME + "D:(D;;FA;;;" + self.OTHER + ")(A;;FA;;;" + self.ME + ")")
         self.assertTrue(private(denied, self.ME))
         self.assertFalse(writable(denied, self.ME))
+
+    def test_windows_reparse_points_and_scratch_rule(self):
+        # Windows 的重導向是任何 reparse point；暫存根在使用者目錄下，只要不碰 source 與部署區就允許（#39）
+        attributes = {"junction": stat.FILE_ATTRIBUTE_REPARSE_POINT | stat.FILE_ATTRIBUTE_DIRECTORY,
+                      "plain": stat.FILE_ATTRIBUTE_DIRECTORY}
+        def lstat(path):
+            if Path(path).name not in attributes:
+                raise FileNotFoundError(path)
+            return mock.Mock(st_file_attributes=attributes[Path(path).name])
+        conflict, home = API["scratch_conflict"], Path("/home/u")
+        with self.windows():
+            with mock.patch("os.lstat", side_effect=lstat):
+                self.assertTrue(API["is_redirected"](Path("/x/junction")))
+                self.assertFalse(API["is_redirected"](Path("/x/plain")))
+                self.assertFalse(API["is_redirected"](Path("/x/missing")))
+            self.assertFalse(conflict(home / ".local/share/chezmoi", home, home / "AppData/Local/Temp"))
+            self.assertTrue(conflict(home / ".local/share/chezmoi", home, home / ".claude/tmp"))
+            self.assertTrue(conflict(home / ".local/share/chezmoi", home, home / ".config"))
+            self.assertTrue(conflict(home / ".local/share/chezmoi", home, home / ".local/share/chezmoi/tmp"))
+            self.assertTrue(conflict(home / ".local/share/chezmoi", home, home / ".local"))
+        # POSIX 規則不變：root 不得等於或包含暫存根
+        self.assertTrue(conflict(Path("/x"), Path("/tmp"), Path("/tmp")))
+        self.assertTrue(conflict(Path("/x"), Path("/"), Path("/tmp")))
+        self.assertTrue(conflict(Path("/tmp"), Path("/home/u"), Path("/tmp")))
+        self.assertFalse(conflict(Path("/home/u/.local/share/chezmoi"), Path("/home/u"), Path("/tmp")))
+        self.assertFalse(conflict(Path("/tmp/src"), Path("/home/u"), Path("/tmp")))
 
     def test_private_checks_posix_and_windows(self):
         private = Path(self.temp.name) / "private"
