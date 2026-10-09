@@ -11,12 +11,42 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import tempfile
 import unittest
 
 REPO = Path(__file__).resolve().parents[1]
 ENGINE = REPO / 'examples/chezmoi/.chezmoitemplates/ai/shared/scripts/sync.sh'
+# 原生 Windows（#15 W6）：暫存根與子程序環境來自平台層；sh 由 Git Bash 提供
+_spec = importlib.util.spec_from_file_location('write_test_api', ENGINE.with_name('scan-secrets.py'))
+API = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(API)
+WINDOWS = API.WINDOWS
+SH = shutil.which('sh') or 'sh'
+
+
+def remove_tree(path):
+    # Windows 的 git 物件是唯讀檔，rmtree 直接刪會 PermissionError：先解除唯讀再刪
+    def retry(func, name, _exc):
+        os.chmod(name, stat.S_IWRITE)
+        func(name)
+    shutil.rmtree(path, onerror=retry)
+
+
+def loosen(path, write=False):
+    """讓檔案不再私有（POSIX 是 chmod 666／664，Windows 給 Everyone 讀或寫）；引擎兩邊都必須看得到。"""
+    if WINDOWS:
+        subprocess.run(['icacls', str(path), '/grant', '*S-1-1-0:' + ('W' if write else 'R')], check=True, capture_output=True)
+    else:
+        path.chmod(0o664 if write else 0o666)
+
+
+def tighten(path):
+    if WINDOWS:
+        subprocess.run(['icacls', str(path), '/remove:g', '*S-1-1-0'], check=True, capture_output=True)
+    else:
+        path.chmod(0o644)
 REL = '.chezmoitemplates/ai/shared/instructions.md'
 # 範本只附帶引擎自己的 skill；測試需要的其他 skill 來自這個目錄，疊在範本上
 FIXTURE_SKILLS = REPO / 'tests/fixtures/skills'
@@ -29,7 +59,7 @@ QUIET_GIT = dict(GIT_CONFIG_COUNT='3', GIT_CONFIG_KEY_0='maintenance.auto', GIT_
 
 class WriteTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix='ai-write-test-', dir='/tmp')
+        self.tmp = tempfile.TemporaryDirectory(prefix='ai-write-test-', dir=str(API.temporary_root()))
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve()
         self.src = self.root / 'source 中文 space'
@@ -40,7 +70,7 @@ class WriteTests(unittest.TestCase):
         self.home = self.root / 'home'
         self.home.mkdir()
         self.dst.mkdir()
-        self.env = dict(PATH=os.environ['PATH'], HOME=str(self.home), LC_ALL='C',
+        self.env = dict(API.child_environment(self.home, os.environ['PATH']),
                         GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null',
                         GIT_TERMINAL_PROMPT='0', GIT_AUTHOR_NAME='Fixture', GIT_AUTHOR_EMAIL='fixture@example.test',
                         GIT_COMMITTER_NAME='Fixture', GIT_COMMITTER_EMAIL='fixture@example.test', **QUIET_GIT)
@@ -83,7 +113,7 @@ sys.exit(10 if secret else 0)
                       '--no-tty', 'apply', '--force'])
 
     def call(self, command, expected=0, extra=()):
-        args = ['sh', ENGINE, command, '--source', self.src, '--destination', self.dst,
+        args = [SH, ENGINE, command, '--source', self.src, '--destination', self.dst,
                 '--remote', self.remote, '--branch', 'main', '--plan', self.planfile,
                 '--scanner', self.scanner, '--author-name', 'Fixture', '--author-email', 'fixture@example.test']
         result = self.run_cmd(args + list(extra), expected)
@@ -110,7 +140,7 @@ sys.exit(10 if secret else 0)
         for label, root in [('source', self.src), ('destination', self.dst), ('remote', self.remote)]:
             for p in root.rglob('*'):
                 if p.is_file():
-                    out[label + '/' + str(p.relative_to(root))] = (p.read_bytes(), p.stat().st_mode)
+                    out[label + '/' + p.relative_to(root).as_posix()] = (p.read_bytes(), p.stat().st_mode)
         return out
 
     def incoming(self, text='\nIncoming shared edit.\n', path=REL):
@@ -163,6 +193,7 @@ sys.exit(10 if secret else 0)
         self.assertIn(b'NO_CHANGES', self.execute())
         self.assertEqual(before, self.state())
 
+    @unittest.skipIf(WINDOWS, 'mode bits do not exist on Windows; ACLs are covered in test-scanner.py')
     def test_looser_modes_are_planned_and_tightened_stricter_kept(self):
         # 比標準寬鬆的權限（umask 002 的 664、手動的 777）列在 plan 裡並收回 644/755；
         # 比標準嚴格的 600 保留不動
@@ -195,6 +226,7 @@ sys.exit(10 if secret else 0)
         self.assertEqual((self.src / REL).stat().st_mode & 0o777, 0o644)
         self.assertEqual(settings.stat().st_mode & 0o777, 0o600)
 
+    @unittest.skipIf(WINDOWS, 'chmod has no effect on Windows; the executable bit comes from Git there by definition')
     def test_executable_bit_follows_git_not_the_filesystem(self):
         # 執行位元以 HEAD 為準（#31）：檔案系統的位元不一致時（Windows 的 stat 對所有檔案回報 666，
         # 或 POSIX 上手動 chmod），commit 保留 git 的模式，執行時把 source 檔案收回成 git 的值
@@ -309,6 +341,7 @@ sys.exit(10 if secret else 0)
         (self.src / '.git/ai-agent-sync-transaction').mkdir()
         self.plan(expected=66)
 
+    @unittest.skipIf(WINDOWS, 'creating symlinks needs a privilege on Windows; junctions are covered in test-scanner.py')
     def test_symlink_and_missing_destination(self):
         target = self.dst / '.codex/AGENTS.md'
         target.unlink()
@@ -344,7 +377,7 @@ sys.exit(10 if secret else 0)
         self.assertEqual(after, self.git(self.remote, 'rev-parse', 'main'))
 
     def test_network_failure_no_source_mutation(self):
-        shutil.rmtree(self.remote)
+        remove_tree(self.remote)
         self.remote.mkdir()
         before = self.state()
         self.plan(expected=71)
@@ -475,6 +508,7 @@ sys.exit(10 if secret else 0)
         finally:
             ENGINE = previous
 
+    @unittest.skipIf(WINDOWS, 'creating symlinks needs a privilege on Windows')
     def test_canonical_source_lock_and_local_remote_spaces(self):
         alias = self.root / 'alias'
         alias.symlink_to(self.src, target_is_directory=True)
@@ -645,7 +679,7 @@ sys.exit(10 if secret else 0)
         return config
 
     def raw(self, args, expected=0):
-        result = subprocess.run(['sh', str(ENGINE), *[str(a) for a in args]], env=self.env, cwd=self.root,
+        result = subprocess.run([SH, str(ENGINE), *[str(a) for a in args]], env=self.env, cwd=self.root,
                                 capture_output=True, timeout=120)
         output = result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')
         self.assertEqual(result.returncode, expected, output)
@@ -660,7 +694,10 @@ sys.exit(10 if secret else 0)
         plan_file = Path([l for l in output.splitlines() if l.startswith('PLAN_FILE: ')][0][len('PLAN_FILE: '):])
         plan_id = [l for l in output.splitlines() if l.startswith('PLAN_ID: ')][0][len('PLAN_ID: '):]
         self.assertEqual(plan_file.parent, self.root / 'plans')
-        self.assertEqual((self.root / 'plans').stat().st_mode & 0o777, 0o700)
+        if WINDOWS:
+            self.assertTrue(API.private_directory_report(self.root / 'plans')[0])
+        else:
+            self.assertEqual((self.root / 'plans').stat().st_mode & 0o777, 0o700)
         self.assertEqual(hashlib.sha256(plan_file.read_bytes()).hexdigest(), plan_id)
         self.raw(['in', '--config', config, '--approve', plan_id])
         self.assertIn('Incoming shared edit.', (self.dst / '.claude/CLAUDE.md').read_text())
@@ -678,7 +715,7 @@ sys.exit(10 if secret else 0)
         self.assertIn('INVALID_CONFIG', self.raw(['plan', '--operation', 'in', '--config', config], expected=78))
         self.assertIn('INVALID_CONFIG', self.raw(['status', '--config', config], expected=78))
         config = self.write_config()
-        config.chmod(0o666)
+        loosen(config)
         self.raw(['status', '--config', config], expected=78)
         config = self.write_config(writer='someone')
         self.raw(['status', '--config', config], expected=78)
@@ -686,6 +723,7 @@ sys.exit(10 if secret else 0)
         self.raw(['status', '--config', config], expected=78)
         self.raw(['status', '--config', 'relative.json'], expected=64)
 
+    @unittest.skipIf(WINDOWS, 'the /tmp directory alias is a POSIX scenario')
     def test_plan_path_alias_and_deployment_regions(self):
         # 透過 /tmp 這類目錄別名指定 plan 必須可用；部署區域與 source 內部仍被拒絕。
         alias = Path('/tmp') / self.root.name / 'alias-plan.json'
@@ -735,8 +773,8 @@ sys.exit(10 if secret else 0)
     def test_check_skipped_inside_network_disabled_sandbox(self):
         config = self.write_config()
         env = dict(self.env, CODEX_SANDBOX_NETWORK_DISABLED='1')
-        shutil.rmtree(self.remote)  # 若真的嘗試連線會失敗；CHECK_SKIPPED 必須在連線前回傳。
-        result = subprocess.run(['sh', str(ENGINE), 'check', '--config', str(config), '--agent', 'codex'],
+        remove_tree(self.remote)  # 若真的嘗試連線會失敗；CHECK_SKIPPED 必須在連線前回傳。
+        result = subprocess.run([SH, str(ENGINE), 'check', '--config', str(config), '--agent', 'codex'],
                                 env=env, cwd=self.root, capture_output=True, timeout=120)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(b'CHECK_SKIPPED', result.stdout)
@@ -744,7 +782,7 @@ sys.exit(10 if secret else 0)
         # 今日快取存在時仍優先回 CHECKED_TODAY；非今日快取則附上舊結果與日期。
         (self.root / 'plans').mkdir(exist_ok=True)
         (self.root / 'plans/last-check.json').write_text(json.dumps(dict(checked=86400 * 2, result='UP_TO_DATE')))
-        result = subprocess.run(['sh', str(ENGINE), 'check', '--config', str(config), '--agent', 'codex'],
+        result = subprocess.run([SH, str(ENGINE), 'check', '--config', str(config), '--agent', 'codex'],
                                 env=env, cwd=self.root, capture_output=True, timeout=120)
         self.assertEqual(result.returncode, 0)
         self.assertIn(b'CHECK_SKIPPED', result.stdout)
@@ -752,41 +790,41 @@ sys.exit(10 if secret else 0)
 
     def test_doctor_reports_layout_and_config(self):
         config = self.write_config()
-        result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
+        result = subprocess.run([SH, str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
                                 capture_output=True, timeout=120, text=True)
         self.assertIn('OK   config:', result.stdout); self.assertIn('OK   source:', result.stdout)
         self.assertIn('OK   targets:', result.stdout); self.assertIn('OK   remote: local path', result.stdout)
         self.assertIn('OK   plan_dir:', result.stdout) if (self.root / 'plans').exists() else self.assertIn('FAIL plan_dir:', result.stdout)
         self.assertIn('DOCTOR:', result.stdout)
-        self.assertIn('WARN chezmoi_umask: not set', result.stdout)
+        self.assertIn('OK   chezmoi_umask: not applicable' if WINDOWS else 'WARN chezmoi_umask: not set', result.stdout)
         self.assertIn('OK   permissions:', result.stdout)
         # 設定 chezmoi 的 umask 後轉為 OK；部署檔變成 group 可寫入則 permissions 回報 WARN
         chezmoi_config = self.home / '.config/chezmoi/chezmoi.toml'
         chezmoi_config.parent.mkdir(parents=True)
         chezmoi_config.write_text('umask = 0o022\n')
-        (self.dst / '.claude/CLAUDE.md').chmod(0o664)
-        result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
+        loosen(self.dst / '.claude/CLAUDE.md', write=True)
+        result = subprocess.run([SH, str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
                                 capture_output=True, timeout=120, text=True)
-        self.assertIn('OK   chezmoi_umask: 022', result.stdout)
+        self.assertIn('OK   chezmoi_umask: not applicable' if WINDOWS else 'OK   chezmoi_umask: 022', result.stdout)
         self.assertIn('WARN permissions: 1 group/other writable: .claude/CLAUDE.md', result.stdout)
         self.assertIn('OK   settings: read-only sync commands pre-allowed; in/push prompt', result.stdout)
-        (self.dst / '.claude/CLAUDE.md').chmod(0o644)
+        tighten(self.dst / '.claude/CLAUDE.md')
         # 涵蓋全部子指令的 :* 規則會讓 in/push 不經確認就執行，必須回報
         settings = self.dst / '.claude/settings.json'
         original = settings.read_bytes()
         settings.write_text(json.dumps({'permissions': {'allow': ['Bash(sh ~/.config/ai-agent/bin/sync.sh:*)']}}))
-        result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
+        result = subprocess.run([SH, str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
                                 capture_output=True, timeout=120, text=True)
         self.assertIn('WARN settings: permissions.allow lets Bash(sh ~/.config/ai-agent/bin/sync.sh:*) run in/push without a prompt', result.stdout)
         settings.write_bytes(original)
         (self.dst / '.codex/AGENTS.md').unlink()
-        result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
+        result = subprocess.run([SH, str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
                                 capture_output=True, timeout=120, text=True)
         self.assertEqual(result.returncode, 1); self.assertIn('FAIL targets:', result.stdout)
-        result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(self.write_config(writer='nobody'))], env=self.env,
+        result = subprocess.run([SH, str(ENGINE), 'doctor', '--config', str(self.write_config(writer='nobody'))], env=self.env,
                                 cwd=self.root, capture_output=True, timeout=120, text=True)
         self.assertEqual(result.returncode, 78); self.assertIn('INVALID_CONFIG', result.stdout)
-        result = subprocess.run(['sh', str(ENGINE), 'doctor'], env=self.env, cwd=self.root, capture_output=True, timeout=120, text=True)
+        result = subprocess.run([SH, str(ENGINE), 'doctor'], env=self.env, cwd=self.root, capture_output=True, timeout=120, text=True)
         self.assertIn('WARN config: no --config', result.stdout)
 
     def test_check_explicit_options_and_network_failure(self):
@@ -794,7 +832,7 @@ sys.exit(10 if secret else 0)
                 '--branch', 'main', '--scanner', self.scanner]
         self.assertIn('REMOTE: UP_TO_DATE', self.raw(base))
         self.raw(base + ['--plan', self.planfile], expected=64)
-        shutil.rmtree(self.remote)
+        remove_tree(self.remote)
         self.remote.mkdir()
         self.assertIn('NETWORK_ERROR', self.raw(base, expected=71))
 
@@ -942,7 +980,9 @@ sys.exit(10 if secret else 0)
                          sorted(self.skill_paths(self.SKILL)))
         self.assertEqual(self.git(self.src, 'status', '--porcelain'), '')
         for target in self.skill_targets(self.SKILL):
-            self.assertEqual((target.read_bytes(), target.stat().st_mode & 0o777), (body, 0o644))
+            self.assertEqual(target.read_bytes(), body)
+            if not WINDOWS:
+                self.assertEqual(target.stat().st_mode & 0o777, 0o644)
         self.assertIn('NO_CHANGES', self.skill_status())
         # 真正的 chezmoi 對同一份 source 產生的結果必須一樣
         deployed = {str(p.relative_to(self.dst)): (p.read_bytes(), p.stat().st_mode) for p in self.dst.rglob('*') if p.is_file()}
@@ -1107,7 +1147,7 @@ sys.exit(10 if secret else 0)
     def test_doctor_reports_the_skill_set(self):
         config = self.write_config()
         def doctor():
-            return subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
+            return subprocess.run([SH, str(ENGINE), 'doctor', '--config', str(config)], env=self.env, cwd=self.root,
                                   capture_output=True, timeout=120, text=True)
         fixtures = 'sample-alpha, sample-beta, sample-braces'
         self.assertIn('OK   skills: 4 in the source, beyond the template: ' + fixtures + '\n', doctor().stdout)
@@ -1177,7 +1217,7 @@ class TemplateOnlyTests(WriteTests):
         self.assertEqual(sorted(p.name for p in (self.dst / '.claude/skills').iterdir()), ['dotfiles-sync'])
         self.assertEqual(sorted(p.name for p in (self.dst / '.agents/skills').iterdir()), ['dotfiles-sync'])
         self.assertIn('NO_CHANGES', self.skill_status())
-        result = subprocess.run(['sh', str(ENGINE), 'doctor', '--config', str(self.write_config())], env=self.env,
+        result = subprocess.run([SH, str(ENGINE), 'doctor', '--config', str(self.write_config())], env=self.env,
                                 cwd=self.root, capture_output=True, timeout=120, text=True)
         self.assertIn('OK   skills: 1 in the source\n', result.stdout)
         self.assertIn('24/24 mapped files present', result.stdout)

@@ -1394,7 +1394,7 @@ def doctor(args):
                 report('WARN', 'settings', str(settings) + ' unreadable or not JSON', 'check the deployed Claude settings')
     if args.remote:
         value = args.remote
-        if value.startswith('/'):
+        if api.absolute_path(value):
             report('OK', 'remote', 'local path ' + value)
         else:
             scp = re.fullmatch(r'([A-Za-z0-9._-]+)@([A-Za-z0-9.-]+):([^/:][^:]*)', value)
