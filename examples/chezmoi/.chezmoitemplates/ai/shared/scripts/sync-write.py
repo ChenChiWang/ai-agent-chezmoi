@@ -166,7 +166,7 @@ def layout(args, legacy=False):
         raise Block(65, 'INVALID_LAYOUT') from None
 
 
-def read(path, missing=False):
+def read(path, missing=False, expected=0o644):
     safe(path)
     if missing and not path.exists():
         return None
@@ -175,7 +175,7 @@ def read(path, missing=False):
     with path.open('rb') as f:
         data = f.read(LIMIT + 1)
     need(len(data) <= LIMIT)
-    return data, stat.S_IMODE(m.st_mode)
+    return data, api.observed_mode(m, expected)
 
 
 def text_file(data):
@@ -183,9 +183,10 @@ def text_file(data):
     data.decode('utf-8')
 
 
-def snapshot(root, paths, optional=()):
+def snapshot(root, paths, optional=(), expected=None):
     # optional：正在加入或移除的 skill 的路徑，檔案可以不存在（以 None 表示）
-    return {p: read(root / p, missing=p in optional) for p in paths}
+    # expected：沒有 mode bits 的平台記錄的模式（source 以 HEAD 為準、target 以 mapping 為準）
+    return {p: read(root / p, missing=p in optional, expected=(expected or {}).get(p, 0o644)) for p in paths}
 
 
 def summary(snap):
@@ -305,7 +306,8 @@ class Engine:
         self.git('config', 'core.hooksPath', '/dev/null')
         self.git('config', 'gc.auto', '0')
         self.git('config', 'maintenance.auto', 'false')
-        (self.iso / 'objects/info/alternates').write_text(str(self.gd / 'objects') + '\n')
+        # 以 bytes 寫入：Windows 的文字模式會把換行寫成 CRLF，Git 會把路徑讀成多一個字元
+        (self.iso / 'objects/info/alternates').write_bytes(os.fsencode(str(self.gd / 'objects')) + b'\n')
         self.scanner = Path(args.scanner or HERE / 'scan-secrets.py').resolve()
         need(self.scanner.is_file() and os.access(self.scanner, os.X_OK), 'MISSING_DEPENDENCY', 69)
         self.ref = self.source_git('symbolic-ref', '-q', 'HEAD').decode().strip()
@@ -314,7 +316,11 @@ class Engine:
         need(args.branch == self.ref[len('refs/heads/'):], 'BLOCKED_BRANCH', 66)
         self.head = self.source_git('rev-parse', '--verify', 'HEAD^{commit}').decode().strip()
         need(re.fullmatch('[0-9a-f]{40}', self.head), 'UNSUPPORTED_REPOSITORY')
-        need(self.source_git('rev-parse', '--show-toplevel').decode().strip() == str(self.src))
+        # 沒有 mode bits 的平台：source 快照記錄 HEAD 的模式，HEAD 沒有的新檔案是 644（POSIX 忽略）
+        self.head_modes = {path.decode(): int(mode[-3:], 8) for path, (mode, kind, _) in self.tree(self.head).items()
+                           if kind == 'blob'}
+        # 以 Path 比較：Git 在 Windows 印正斜線的路徑；POSIX 上與字串比較等價
+        need(Path(os.fsdecode(self.source_git('rev-parse', '--show-toplevel').rstrip(b'\n'))) == self.src)
         for name in ('MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply',
                      'BISECT_LOG', 'index.lock', 'ai-agent-sync-transaction', 'ai-agent-migration-transaction'):
             if name == 'ai-agent-migration-transaction' and getattr(args, 'allow_migration_recovery', False):
@@ -357,7 +363,7 @@ class Engine:
 
     def remote_url(self, value):
         need(not any(ord(c) < 32 for c in value), 'INVALID_REMOTE')
-        if value.startswith('/'):
+        if api.absolute_path(value):
             p = Path(value).resolve()
             need(p.is_dir() and p != self.src and self.src not in p.parents and self.dst not in p.parents,
                  'INVALID_REMOTE')
@@ -541,8 +547,8 @@ class Engine:
                     ref=self.source_git('symbolic-ref', 'HEAD').decode().strip(),
                     index=summary({'index': read(self.gd / 'index')}),
                     config=summary({'config': read(self.gd / 'config')}),
-                    source=summary(snapshot(self.src, self.files, self.optional)),
-                    target=summary(snapshot(self.dst, self.targets, self.optional)))
+                    source=summary(snapshot(self.src, self.files, self.optional, self.head_modes)),
+                    target=summary(snapshot(self.dst, self.targets, self.optional, api.target_modes(self.targets))))
         return result
 
     def clean_index(self):
@@ -571,9 +577,9 @@ class Engine:
         self.clean_index()
         need(all((self.src / p).exists() for p in self.scope(local)[0] if p in self.optional),
              'BLOCKED_LAYOUT: skill without its wrappers')
-        self.working = snapshot(self.src, self.scope(local)[0])
+        self.working = snapshot(self.src, self.scope(local)[0], expected=self.head_modes)
         # Missing targets require separate migration, except those of a skill being added or removed.
-        self.deployed = snapshot(self.dst, self.targets, self.optional)
+        self.deployed = snapshot(self.dst, self.targets, self.optional, api.target_modes(self.targets))
         baseline = self.migration_baseline() if getattr(self.a, 'baseline', None) else self.scoped(self.head)
         self.scan(baseline)
         self.scan(self.working)
@@ -599,7 +605,8 @@ class Engine:
         # 遠端新增的 skill：它的路徑到這裡才知道。納入範圍並記錄目前的狀態，之後的過期檢查才涵蓋得到。
         added = [p for p in self.candidate if p not in self.files], [p for p in rendered if p not in self.targets]
         if added[0] or added[1]:
-            incoming = snapshot(self.src, added[0], added[0]), snapshot(self.dst, added[1], added[1])
+            incoming = (snapshot(self.src, added[0], added[0], self.head_modes),
+                        snapshot(self.dst, added[1], added[1], api.target_modes(added[1])))
             need(not any(incoming[0].values()), 'BLOCKED_LOCAL_CHANGES', 66)
             existing = {p: v for p, v in incoming[1].items() if v is not None}
             if existing:
@@ -703,12 +710,12 @@ class Engine:
                 os.fsync(f.fileno())
             need(self.state() == self.before, 'BLOCKED_STALE_PLAN', 68)
             # 值為 None 代表檔案不存在：舊值 None 是建立，新值 None 是移除。journal 裡對應的欄位是 null。
-            changes = [(p, v) for p, v in changes if read(p, missing=True) != v]
+            changes = [(p, v) for p, v in changes if read(p, missing=True, expected=v[1] if v else 0o644) != v]
             changes.append((self.gd / 'index', (new_index, read(self.gd / 'index')[1])))
             manifest = []
             diagnostics.mark('backup_files')
             for n, (path, value) in enumerate(changes):
-                old = read(path, missing=True)
+                old = read(path, missing=True, expected=value[1] if value else 0o644)
                 for label, item in (('old', old), ('new', value)):
                     if item is not None:
                         atomic(journal / ('%s-%d' % (label, n)), (item[0], 0o600))
@@ -721,7 +728,7 @@ class Engine:
             diagnostics.mark('apply_files')
             for n, (path, value) in enumerate(changes):
                 recorded = manifest[n]['old_hash'] and ((journal / ('old-%d' % n)).read_bytes(), manifest[n]['old_mode'])
-                need(read(path, missing=True) == recorded, 'BLOCKED_STALE_PLAN', 68)
+                need(read(path, missing=True, expected=manifest[n]['old_mode'] or 0o644) == recorded, 'BLOCKED_STALE_PLAN', 68)
                 place(path, value, made)
             diagnostics.mark('update_ref')
             need(self.source_git('symbolic-ref', 'HEAD').decode().strip() == self.ref, 'BLOCKED_STALE_PLAN', 68)
@@ -751,7 +758,7 @@ class Engine:
             diagnostics.mark('restore_files')
             for path, new, old in reversed(backups):
                 try:
-                    current = read(path, missing=True)
+                    current = read(path, missing=True, expected=(old or new or (None, 0o644))[1])
                     if current == old:
                         continue
                     need(current == new)
@@ -795,7 +802,7 @@ class Engine:
                 new_index = (self.iso / 'index').read_bytes()
             else:
                 new_index = read(self.gd / 'index')[0]
-            if self.remote_head == self.head and all(read(p, missing=True) == v for p, v in changes):
+            if self.remote_head == self.head and all(read(p, missing=True, expected=v[1] if v else 0o644) == v for p, v in changes):
                 print('NO_CHANGES')
                 return
             if self.remote_head != self.head:
@@ -822,7 +829,7 @@ class Engine:
             self.transact(new_head, fixes + [(self.dst / p, v) for p, v in self.rendered.items()],
                           (self.iso / 'index').read_bytes())
         else:
-            changes = fixes + [(self.dst / p, v) for p, v in self.rendered.items() if read(self.dst / p, missing=True) != v]
+            changes = fixes + [(self.dst / p, v) for p, v in self.rendered.items() if read(self.dst / p, missing=True, expected=v[1]) != v]
             if changes:
                 self.transact(new_head, changes, read(self.gd / 'index')[0])
                 applied = True
@@ -862,7 +869,7 @@ def configure(a):
     try:
         values = api.load_config(a.config)
     except (ValueError, OSError, api.ScanError):
-        raise Block(78, 'INVALID_CONFIG') from None
+        raise Block(78, api.config_refused(a.config, 'INVALID_CONFIG')) from None
     for key in ('source', 'destination', 'branch', 'scanner', 'profile', 'repository_profile'):
         if getattr(a, key) is None and key in values:
             setattr(a, key, values[key])
@@ -940,8 +947,9 @@ def arguments():
     a.config_values = values
     if a.command == 'check':
         need(not a.approve and not a.plan and not a.offline, 'USAGE: check takes no plan, approval or offline', 64)
-        for value in (a.source, a.destination, a.scanner or '/'):
-            need(Path(value).is_absolute(), 'USAGE: absolute paths required', 64)
+        # 未給定的選用路徑略過；Path('/') 在 Windows 不算絕對路徑，不能拿它當占位
+        for value in (a.source, a.destination, a.scanner):
+            need(not value or Path(value).is_absolute(), 'USAGE: absolute paths required', 64)
         return a
     # auto_in：只有 in、只有參數檔明確為 true、且必須指明 plan 檔；push 永遠需要 --approve。
     a.auto = (a.command == 'in' and not a.approve and values.get('auto_in') is True and bool(a.plan))
@@ -949,8 +957,8 @@ def arguments():
          'USAGE: --approve PLAN_ID required', 64)
     resolve_plan(a, values)
     need(a.plan, 'USAGE: --plan or configured plan_dir required', 64)
-    for value in (a.source, a.destination, a.plan, a.scanner or '/', a.baseline or '/'):
-        need(Path(value).is_absolute(), 'USAGE: absolute paths required', 64)
+    for value in (a.source, a.destination, a.plan, a.scanner, a.baseline):
+        need(not value or Path(value).is_absolute(), 'USAGE: absolute paths required', 64)
     return a
 
 
@@ -1005,7 +1013,7 @@ class Status:
             try:
                 values = api.load_config(options['config'])
             except (ValueError, OSError, api.ScanError):
-                raise Block(78, 'INVALID_CONFIG: reviewed local configuration required') from None
+                raise Block(78, api.config_refused(options['config'], 'INVALID_CONFIG: reviewed local configuration required')) from None
             for key in ('source', 'destination', 'profile', 'repository_profile', 'scanner'):
                 if not options[key] and key in values:
                     options[key] = values[key]
@@ -1184,7 +1192,7 @@ class Status:
                 rc, out = self.git('hash-object', '--no-filters', str(out_path))
                 need(rc == 0, 'GIT_ERROR: hash', 70)
                 oid = out.rstrip(b'\n').decode()
-                mode = '100755' if os.access(self.src / rel, os.X_OK) else '100644'
+                mode = '100755' if api.executable_bit(self.src / rel, index_mode) else '100644'
             staged = 'clean' if (base_oid, base_mode) == (index_oid, index_mode) else 'changed'
             working = 'clean' if (oid, mode) == (index_oid, index_mode) else 'changed'
             if gone:
@@ -1222,7 +1230,7 @@ class Status:
                 current = target.read_bytes()
                 store(work / 'scan' / 'target', rel, current)
                 state = 'clean' if current == rendered else 'changed'
-                if rel in STATUS_EXECUTABLES and not os.access(target, os.X_OK):
+                if rel in STATUS_EXECUTABLES and not api.target_executable(target):
                     state = 'mode'
                 # 比標準 644/755 寬鬆（group 或 other 可寫入）也要看得見
                 if state == 'clean' and api.foreign_writable(target, target.stat()):
@@ -1342,16 +1350,19 @@ def doctor(args):
             report('FAIL', 'layout', 'source/destination layout invalid', 'check absolute paths, symlinks and that the source is a regular Git checkout')
         # chezmoi 沒設定 umask 時，部署權限跟著 shell 的 umask（002 會產生 664）。在 umask 000 下
         # 詢問，才不會把引擎自己的 077 誤判成已設定。
-        rc, out, _ = run(['sh', '-c', 'umask 000 && exec chezmoi dump-config --format json'])
-        try:
-            mask = json.loads(out).get('umask') if rc == 0 else None
-        except (ValueError, AttributeError):
-            mask = None
-        if type(mask) is int and mask & 0o022 == 0o022:
-            report('OK', 'chezmoi_umask', '%03o' % mask)
+        if not api.umask_applies():
+            report('OK', 'chezmoi_umask', 'not applicable: this platform has no mode bits; ACLs are checked instead')
         else:
-            report('WARN', 'chezmoi_umask', 'not set; deployed modes follow the shell umask' if mask == 0 else 'unknown or allows group/other write',
-                   'add "umask = 0o022" to ~/.config/chezmoi/chezmoi.toml')
+            rc, out, _ = run(['sh', '-c', 'umask 000 && exec chezmoi dump-config --format json'])
+            try:
+                mask = json.loads(out).get('umask') if rc == 0 else None
+            except (ValueError, AttributeError):
+                mask = None
+            if type(mask) is int and mask & 0o022 == 0o022:
+                report('OK', 'chezmoi_umask', '%03o' % mask)
+            else:
+                report('WARN', 'chezmoi_umask', 'not set; deployed modes follow the shell umask' if mask == 0 else 'unknown or allows group/other write',
+                       'add "umask = 0o022" to ~/.config/chezmoi/chezmoi.toml')
         loose = [p for p in deployed
                  if (dst / p).is_file() and not api.is_redirected(dst / p) and api.foreign_writable(dst / p, (dst / p).stat())]
         report('OK' if not loose else 'WARN', 'permissions',

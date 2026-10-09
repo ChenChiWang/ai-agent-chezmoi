@@ -53,12 +53,11 @@ def is_redirected(path):
 
 
 def scratch_conflict(src, dst, scratch):
-    """選定的根目錄與引擎暫存區不可重疊。POSIX：root 不得等於或包含暫存根（例如 HOME=/tmp）。
-    Windows：%TEMP% 必然在使用者目錄下，改為暫存根不得與 source 或任何部署區重疊；暫存目錄本身
-    由 make_private 保護。"""
-    if WINDOWS:
-        return overlaps(scratch, src) or any(overlaps(scratch, dst / region) for region in TARGET_REGIONS)
-    return any(root == scratch or root in scratch.parents for root in (src, dst))
+    """選定的根目錄不得等於或包含引擎的暫存根。POSIX 看 source 與 destination（例如 HOME=/tmp）。
+    Windows：%TEMP% 必然在使用者目錄下，改看 source 與每個部署區；暫存根底下的 source（像 POSIX 的
+    /tmp/src）照樣允許，暫存目錄本身由 make_private 保護。"""
+    roots = (src, *(dst / region for region in TARGET_REGIONS)) if WINDOWS else (src, dst)
+    return any(root == scratch or root in scratch.parents for root in roots)
 
 
 def absolute_path(value):
@@ -278,6 +277,45 @@ def child_environment(home, path=None):
 def scanner_command(path):
     """scanner 以執行檔身分呼叫；Windows 沒有 shebang，交給目前的 Python 直譯器。"""
     return [sys.executable, str(path)] if WINDOWS else [str(path)]
+
+
+def observed_mode(info, expected):
+    """快照記錄的檔案模式。POSIX 是 stat 的 mode bits；Windows 沒有 mode bits，記錄預期值（source 檔是
+    HEAD 的模式、target 是 mapping 的標準模式、其他 644）：執行位元由 git 承擔、寬鬆權限由 ACL 承擔。"""
+    return expected if WINDOWS else stat.S_IMODE(info.st_mode)
+
+
+def executable_bit(path, index_mode):
+    """status 判斷工作目錄檔案的執行位元：POSIX 看檔案系統；Windows 以 index 為準（沒有 entry 就是 644）。"""
+    if WINDOWS:
+        return index_mode == '100755'
+    return os.access(path, os.X_OK)
+
+
+def target_executable(path):
+    """部署的腳本要可執行；Windows 沒有執行位元，腳本經由 sh 與 python 執行，條件永遠成立。"""
+    return True if WINDOWS else os.access(path, os.X_OK)
+
+
+def target_mode(rel):
+    """部署檔的標準模式：引擎腳本與相容入口 755，其餘 644；與 render 的規則相同。"""
+    if rel.startswith('.config/ai-agent/bin/'):
+        return 0o644 if rel.endswith('.json') else 0o755
+    return 0o755 if rel == '.claude/skills/dotfiles-sync/sync.sh' else 0o644
+
+
+def target_modes(paths):
+    return {p: target_mode(p) for p in paths}
+
+
+def umask_applies():
+    """chezmoi 的 umask 設定只在有 mode bits 的平台有意義。"""
+    return not WINDOWS
+
+
+def config_refused(path, label):
+    """參數檔不被接受時的標籤；Windows 補上把它設成私有的指令。"""
+    return label + '; ' + private_hint(path) if WINDOWS else label
 
 
 def skill_names(names):

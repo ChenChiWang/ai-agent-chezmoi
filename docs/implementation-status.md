@@ -16,7 +16,18 @@ Current state only. Older round-by-round records are archived in
   (user, SYSTEM, Administrators only). Everything the engine creates privately gets a
   protected DACL through `icacls` with SIDs and is read back. Verified on the Windows 11
   machine: a profile file with the inherited sandbox group is not private, `make_private`
-  makes it so, and `load_config` accepts it. Mode semantics wait for the entry point (W5).
+  makes it so, and `load_config` accepts it.
+- **Windows mode semantics** (#15 W4c, in W5): snapshots record the expected mode where
+  there are no mode bits (`HEAD` for sources, the mapping for targets), `status` takes the
+  executable bit from the index, `doctor` reports the umask as not applicable and a refused
+  parameter file names its `icacls` fix. POSIX reads are the same `S_IMODE` as before.
+  Four more Windows findings went with it: the scratch rule allowed a source under
+  `%TEMP%` (as POSIX allows `/tmp/src`), Git's top level and a local remote path are
+  compared and accepted in Windows form, the isolated repository's `alternates` file is
+  written as bytes (text mode wrote CRLF), and optional path options are skipped instead
+  of compared with `/`. First complete loop on native Windows 11 against a fixture
+  source and remote: `doctor`, `status`, `check`, `plan push`, `push` (modes at `HEAD`
+  kept), `check` (`BEHIND 1`), `plan in`, `in`, `status` (`NO_CHANGES`).
 - **Windows redirections and scratch area** (#39, W4b): `is_redirected` sees every reparse
   point on Windows; the scratch rule of `validate_layout` lets `%TEMP%` live under the
   profile as long as it overlaps neither the source nor a deployment region. `status`
