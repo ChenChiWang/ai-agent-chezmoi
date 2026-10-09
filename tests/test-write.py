@@ -19,6 +19,8 @@ import unittest
 REPO = Path(__file__).resolve().parents[1]
 ENGINE = REPO / 'examples/chezmoi/.chezmoitemplates/ai/shared/scripts/sync.sh'
 # 原生 Windows（#15 W6）：暫存根與子程序環境來自平台層；sh 由 Git Bash 提供
+import sys
+sys.dont_write_bytecode = True  # 載入引擎模組時不可在範本目錄留下 __pycache__，chezmoi 會把 .pyc 當 template
 _spec = importlib.util.spec_from_file_location('write_test_api', ENGINE.with_name('scan-secrets.py'))
 API = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(API)
