@@ -351,7 +351,7 @@ class PlatformTests(unittest.TestCase):
                                    "TEMP": "C:\\t", "TMP": "C:\\t", "COMSPEC": "cmd.exe"})
             # 做不到等價的擁有者與權限檢查：一律不通過，不略過
             # 做不到的判定不會默默通過：Windows 分支要讀 ACL，這裡給它一個開放的描述子
-            with mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME,
+            with mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME, ELEVATED=False,
                                  security_descriptor=lambda p: API["parse_sddl"](self.INHERITED)):
                 self.assertFalse(API["private_mode"](Path(__file__), 0o600))
                 self.assertFalse(API["private_file"](Path(__file__), Path(__file__).stat()))
@@ -411,6 +411,9 @@ class PlatformTests(unittest.TestCase):
         self.assertFalse(writable(runner, admin))
         self.assertFalse(private(elevated, self.ME, self.ME))
         self.assertFalse(private(elevated, self.ME))
+        # token 有提升權限：Administrators 擁有的檔案算自己的，即使 token owner 已被 MSYS 改回使用者
+        self.assertTrue(private(elevated, self.ME, self.ME, True))
+        self.assertFalse(private(API["parse_sddl"]("O:" + self.OTHER + "D:PAI(A;;FA;;;" + self.ME + ")"), self.ME, self.ME, True))
         self.assertTrue(writable(API["parse_sddl"]("O:" + self.ME + "D:(A;;FA;;;SY)(A;;0x120116;;;" + self.OTHER + ")"), self.ME))
         self.assertTrue(writable(API["parse_sddl"]("O:" + self.ME + "D:(A;;SD;;;WD)"), self.ME))
         self.assertTrue(writable(API["parse_sddl"]("O:" + self.ME + "D:(A;;GA;;;AU)"), self.ME))
@@ -460,7 +463,8 @@ class PlatformTests(unittest.TestCase):
         me = API["current_user_sid"]()
         self.assertTrue(me.startswith("S-1-5-21-"))
         # 一般使用者建立的檔案 owner 是自己；提升權限的 Administrator（CI runner）是 Administrators 群組
-        self.assertIn(API["security_descriptor"](target)[0], (me, API["token_owner_sid"]()))
+        self.assertIn(API["security_descriptor"](target)[0],
+                      (me, API["token_owner_sid"]()) + (("S-1-5-32-544",) if API["token_elevated"]() else ()))
         subprocess.run(["icacls", str(target), "/grant", "*S-1-1-0:W"], check=True, capture_output=True)
         self.assertFalse(API["private_file"](target, target.stat()))
         self.assertTrue(API["foreign_writable"](target, target.stat()))
@@ -499,7 +503,7 @@ class PlatformTests(unittest.TestCase):
             self.assertFalse(API["target_executable"](private))
             self.assertTrue(API["umask_applies"]())
             self.assertEqual(API["config_refused"](private, "INVALID_CONFIG"), "INVALID_CONFIG")
-        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME):
+        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME, ELEVATED=False):
             self.assertEqual(API["observed_mode"](private.stat(), 0o755), 0o755)
             self.assertTrue(API["executable_bit"](private, "100755"))
             self.assertFalse(API["executable_bit"](private, "100644"))
@@ -564,7 +568,7 @@ class PlatformTests(unittest.TestCase):
             with mock.patch("subprocess.run") as run:
                 API["make_private"](private)
             run.assert_not_called()
-        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME), \
+        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME, ELEVATED=False), \
                 mock.patch.dict(API["replace"].__globals__, security_descriptor=lambda p: API["parse_sddl"](self.INHERITED)):
             self.assertFalse(API["private_file"](private, private.stat()))
             self.assertFalse(API["private_mode"](private, 0o600))
@@ -574,7 +578,7 @@ class PlatformTests(unittest.TestCase):
             self.assertEqual(API["private_hint"](private),
                              'icacls "%s" /inheritance:r /grant:r *%s:F *S-1-5-18:F *S-1-5-32-544:F' % (private, self.ME))
             self.assertTrue(API["private_hint"](directory).endswith("*S-1-5-32-544:(OI)(CI)F"))
-        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME), \
+        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME, ELEVATED=False), \
                 mock.patch.dict(API["replace"].__globals__, security_descriptor=lambda p: API["parse_sddl"](self.PROTECTED)), \
                 mock.patch("subprocess.run", return_value=mock.Mock(returncode=0)) as run:
             self.assertTrue(API["private_file"](private, private.stat()))
@@ -584,12 +588,12 @@ class PlatformTests(unittest.TestCase):
             API["make_private"](directory)
             self.assertEqual(run.call_args[0][0][4:], ["*" + self.ME + ":(OI)(CI)F", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"])
         # icacls 失敗，或設定後讀回仍不私有：OSError，絕不默默通過
-        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME), \
+        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME, ELEVATED=False), \
                 mock.patch.dict(API["replace"].__globals__, security_descriptor=lambda p: API["parse_sddl"](self.INHERITED)), \
                 mock.patch("subprocess.run", return_value=mock.Mock(returncode=0)):
             with self.assertRaises(OSError):
                 API["make_private"](private)
-        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME), \
+        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME, ELEVATED=False), \
                 mock.patch("subprocess.run", return_value=mock.Mock(returncode=1)):
             with self.assertRaises(OSError):
                 API["make_private"](private)
