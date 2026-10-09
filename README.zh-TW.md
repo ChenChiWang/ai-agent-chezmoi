@@ -201,7 +201,8 @@ sh tests/session-acceptance.sh claude|codex      # 呼叫真實模型驗收開�
 
 Commit／push 只在臨時本機 fixture 執行，測試不會碰你的私有 repo。CI（[`.github/workflows/tests.yml`](./.github/workflows/tests.yml)）
 在 Ubuntu 24.04、macOS 15 與 WSL2 Ubuntu 24.04 上執行 `session-acceptance.sh` 以外的全部測試，
-並在原生 Windows 執行跟隨模式的端對端測試（`.github/ci/test-windows-follow.ps1`）。
+並在原生 Windows 執行跟隨模式的端對端測試（`.github/ci/test-windows-follow.ps1`），以及允許失敗的
+原生引擎端對端測試（`.github/ci/test-windows-engine.py`：對 fixture 跑完整的 `plan`／`push`／`in` 迴圈）。
 
 ## Legacy v1
 

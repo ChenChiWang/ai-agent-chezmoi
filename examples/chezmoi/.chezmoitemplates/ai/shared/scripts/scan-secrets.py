@@ -226,9 +226,13 @@ def make_private(path):
     只授權使用者、SYSTEM、Administrators，然後讀回確認。"""
     if not WINDOWS:
         return
-    run = subprocess.run(['icacls', str(path), '/inheritance:r', '/grant:r', *private_grants(path)],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
-    if run.returncode != 0 or not acl_private(security_descriptor(path), current_user_sid()):
+    # /reset 先丟掉明確的 ACE（例如使用者自己加的 Everyone），/inheritance:r 再移除繼承的，最後只授權三個主體
+    for arguments in (['/reset'], ['/inheritance:r', '/grant:r', *private_grants(path)]):
+        run = subprocess.run(['icacls', str(path), *arguments], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+        if run.returncode != 0:
+            raise OSError('icacls failed: ' + str(path))
+    if not acl_private(security_descriptor(path), current_user_sid()):
         raise OSError('private acl not applied: ' + str(path))
 
 
@@ -762,7 +766,11 @@ def main():
         # 上線用：把參數檔或 plan_dir 設成只有自己能存取（#15 W5）；路徑要存在、絕對、不是重導向
         target = Path(sys.argv[2])
         require(target.is_absolute() and not is_redirected(target) and target.exists())
-        protect(target)
+        try:
+            protect(target)
+        except OSError:
+            print('FAIL: ' + str(target) + ' could not be made private; check its owner and ACL')
+            return 70
         print('OK: ' + str(target) + ' is private')
         return 0
     if len(sys.argv) == 3 and sys.argv[1] == '--validate-shared':
