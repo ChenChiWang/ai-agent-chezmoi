@@ -677,7 +677,7 @@ sys.exit(10 if secret else 0)
         values.update(extra)
         config = self.root / 'sync.local.json'
         config.write_text(json.dumps(values))
-        config.chmod(0o600)
+        API.protect(config)  # POSIX 是 chmod 600；Windows 設私有 ACL，runner 的暫存目錄不會自動私有
         return config
 
     def raw(self, args, expected=0):
