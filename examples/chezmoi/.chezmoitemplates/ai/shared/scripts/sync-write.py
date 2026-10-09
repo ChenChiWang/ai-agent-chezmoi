@@ -1346,9 +1346,11 @@ def doctor(args):
             report('OK' if not missing else 'FAIL', 'source', '%s, %d/%d mapped files present' % (src, len(files) - len(missing), len(files)), '' if not missing else 'the private source is missing mapped files; check its layout')
             missing = [p for p in deployed if not (dst / p).is_file()]
             report('OK' if not missing else 'FAIL', 'targets', '%d/%d deployed under %s' % (len(deployed) - len(missing), len(deployed), dst), '' if not missing else 'chezmoi apply (first deployment) or an approved in')
-        except (ValueError, OSError):
+        except (ValueError, OSError) as error:
             deployed = api.mapping(args.profile)[1]
-            report('FAIL', 'layout', 'source/destination layout invalid', 'check absolute paths, symlinks and that the source is a regular Git checkout')
+            # Windows 附上原因（固定字串，沒有檔案內容）；POSIX 的輸出不變
+            report('FAIL', 'layout', 'source/destination layout invalid' + ((': ' + str(error)) if api.WINDOWS else ''),
+                   'check absolute paths, symlinks and that the source is a regular Git checkout')
         # chezmoi 沒設定 umask 時，部署權限跟著 shell 的 umask（002 會產生 664）。在 umask 000 下
         # 詢問，才不會把引擎自己的 077 誤判成已設定。
         if not api.umask_applies():
