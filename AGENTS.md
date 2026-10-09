@@ -26,7 +26,8 @@ belongs in that user's private source, never here.
   lines for tools or assistants.
 - CI: `.github/workflows/tests.yml` runs on every pull request and every push to `main`.
   It runs the test suite on `ubuntu-24.04`, `macos-15` and WSL2 Ubuntu 24.04 (umask
-  `002`), and the follower test on native Windows. About 25 minutes.
+  `002`), the follower test on native Windows, and the native engine end-to-end test,
+  which is allowed to fail while native Windows is experimental. About 25 minutes.
 - Merge method: rebase. Delete the branch afterwards.
 - Every time, the maintainer has to agree explicitly to: a merge, a force push to a
   shared branch, a change of repository settings, a new or changed CI workflow.

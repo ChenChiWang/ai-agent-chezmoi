@@ -17,6 +17,13 @@ Current state only. Older round-by-round records are archived in
   protected DACL through `icacls` with SIDs and is read back. Verified on the Windows 11
   machine: a profile file with the inherited sandbox group is not private, `make_private`
   makes it so, and `load_config` accepts it.
+- **Native engine CI** (#15 W6a): `.github/ci/test-windows-engine.py` runs the fixture loop
+  natively with 70 assertions (refusal of an open parameter file with its `icacls` hint,
+  `--make-private`, `doctor`, `status`, `check`, `plan push`, `push` with the executable bits
+  kept at `HEAD`, `check` `BEHIND 1`, `plan in`, `in`, a junction refused). The
+  `windows-2025 (native engine, experimental)` job installs pinned chezmoi and Gitleaks and
+  is allowed to fail until the maintainer promotes it. `make_private` now resets explicit
+  entries before protecting a file, so a user-added grant is removed too.
 - **Native Windows bring-up** (#15 W5b): no new entry point. Claude Code's Bash tool on
   Windows is Git Bash, where `preflight.sh`, `sh sync.sh` and the four pre-allowed rules
   work unchanged; `preflight.sh` reports Git Bash as experimental instead of failing,

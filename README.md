@@ -237,7 +237,9 @@ sh tests/session-acceptance.sh claude|codex      # fresh-session acceptance agai
 Commits and pushes happen only in temporary local fixtures; the tests never touch
 your private repository. CI ([`.github/workflows/tests.yml`](./.github/workflows/tests.yml)) runs
 all of them except `session-acceptance.sh` on Ubuntu 24.04, macOS 15 and WSL2 Ubuntu 24.04, plus
-the native Windows follower end-to-end test (`.github/ci/test-windows-follow.ps1`).
+the native Windows follower end-to-end test (`.github/ci/test-windows-follow.ps1`) and, allowed
+to fail while native Windows is experimental, the native engine end-to-end test
+(`.github/ci/test-windows-engine.py`: a full `plan`/`push`/`in` loop against a fixture).
 
 ## Legacy v1
 
