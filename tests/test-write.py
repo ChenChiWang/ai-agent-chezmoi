@@ -177,7 +177,7 @@ sys.exit(10 if secret else 0)
         after = {str(p.relative_to(self.dst)): (p.read_bytes(), p.stat().st_mode) for p in self.dst.rglob('*') if p.is_file()}
         self.assertEqual(before, after)
         self.assertEqual(self.git(self.src, 'status', '--porcelain'), '')
-        self.assertIn('Incoming shared edit.', (self.dst / '.codex/AGENTS.md').read_text())
+        self.assertIn('Incoming shared edit.', (self.dst / '.codex/AGENTS.md').read_text(encoding='utf-8'))
 
     def test_local_in_preserves_source_and_index(self):
         self.edit()
@@ -187,7 +187,7 @@ sys.exit(10 if secret else 0)
         self.execute('in')
         self.assertEqual(original, (self.src / '.git/index').read_bytes())
         self.assertEqual(head, self.git(self.src, 'rev-parse', 'HEAD'))
-        self.assertIn('Fixture shared edit.', (self.dst / '.claude/CLAUDE.md').read_text())
+        self.assertIn('Fixture shared edit.', (self.dst / '.claude/CLAUDE.md').read_text(encoding='utf-8'))
 
     def test_no_changes_no_commit(self):
         before = self.state()
@@ -540,7 +540,7 @@ sys.exit(10 if secret else 0)
             with self.assertRaises(module.Block) as caught:
                 engine.execute()
         self.assertEqual(caught.exception.code, 72)
-        self.assertEqual((self.dst / '.claude/CLAUDE.md').read_text(), 'concurrent user edit')
+        self.assertEqual((self.dst / '.claude/CLAUDE.md').read_text(encoding='utf-8'), 'concurrent user edit')
         self.assertTrue((self.src / '.git/ai-agent-sync-transaction/manifest.json').is_file())
 
     def diagnostic_failure(self, fault):
@@ -702,7 +702,7 @@ sys.exit(10 if secret else 0)
             self.assertEqual((self.root / 'plans').stat().st_mode & 0o777, 0o700)
         self.assertEqual(hashlib.sha256(plan_file.read_bytes()).hexdigest(), plan_id)
         self.raw(['in', '--config', config, '--approve', plan_id])
-        self.assertIn('Incoming shared edit.', (self.dst / '.claude/CLAUDE.md').read_text())
+        self.assertIn('Incoming shared edit.', (self.dst / '.claude/CLAUDE.md').read_text(encoding='utf-8'))
         self.assertIn('PLAN_NOT_FOUND', self.raw(['in', '--config', config, '--approve', '0' * 64], expected=66))
 
     def test_config_status_and_command_line_override(self):
@@ -849,7 +849,7 @@ sys.exit(10 if secret else 0)
         self.incoming()
         plan_file, plan_id = self.auto_plan(config)
         self.assertIn('AUTO_IN', self.raw(['in', '--config', config, '--plan', plan_file]))
-        self.assertIn('Incoming shared edit.', (self.dst / '.codex/AGENTS.md').read_text())
+        self.assertIn('Incoming shared edit.', (self.dst / '.codex/AGENTS.md').read_text(encoding='utf-8'))
         # 腳本變更不得自動套用：回報 PENDING_APPROVAL 與 PLAN_ID，狀態不變；明確核准後才套用。
         self.incoming('\n# incoming script comment\n', path='.chezmoitemplates/ai/shared/scripts/sync.sh')
         plan_file, plan_id = self.auto_plan(config)
@@ -860,7 +860,7 @@ sys.exit(10 if secret else 0)
         self.assertEqual(before, self.state())
         self.assertFalse((self.src / '.git/ai-agent-sync.lock').exists())
         self.raw(['in', '--config', config, '--approve', plan_id])
-        self.assertIn('incoming script comment', (self.dst / '.config/ai-agent/bin/sync.sh').read_text())
+        self.assertIn('incoming script comment', (self.dst / '.config/ai-agent/bin/sync.sh').read_text(encoding='utf-8'))
         # 沒有 auto_in 時，缺 --approve 仍是用法錯誤；push 永遠沒有自動模式。
         config = self.write_config()
         self.incoming('\nThird incoming edit.\n')
@@ -997,7 +997,7 @@ sys.exit(10 if secret else 0)
         output = self.replan()
         self.assertNotIn('SKILL_', output)
         self.execute()
-        self.assertIn('Later edit.', self.skill_targets(self.SKILL)[1].read_text())
+        self.assertIn('Later edit.', self.skill_targets(self.SKILL)[1].read_text(encoding='utf-8'))
 
     def test_skill_added_remotely_is_received(self):
         bodies = []
@@ -1040,7 +1040,7 @@ sys.exit(10 if secret else 0)
         self.assertFalse((self.src / self.skill_paths('sample-beta')[0]).exists())
         self.assertEqual(self.git(self.src, 'status', '--porcelain'), '')
         self.assertFalse(self.skill_targets('sample-beta')[0].exists())
-        self.assertEqual(note.read_text(), 'kept')
+        self.assertEqual(note.read_text(encoding='utf-8'), 'kept')
         self.assertFalse(self.skill_targets('sample-beta')[1].parent.exists())
 
     def test_skill_removal_keeps_a_modified_target(self):
@@ -1050,7 +1050,7 @@ sys.exit(10 if secret else 0)
         before = self.state()
         self.assertIn('DRIFT', self.replan(expected=2))
         self.assertEqual(before, self.state())
-        self.assertEqual(target.read_text(), 'edited by the user')
+        self.assertEqual(target.read_text(encoding='utf-8'), 'edited by the user')
 
     def test_skill_target_adopted_when_identical_blocked_when_different(self):
         body = self.add_skill(self.src)
@@ -1107,13 +1107,13 @@ sys.exit(10 if secret else 0)
     def test_skill_added_then_removed_in_incoming_history(self):
         self.publish_from_other(lambda root: self.add_skill(root), 'fixture add skill')
         self.publish_from_other(lambda root: self.remove_skill(root, self.SKILL), 'fixture remove skill')
-        self.publish_from_other(lambda root: (root / REL).write_text((root / REL).read_text() + '\nAfter both.\n'), 'fixture edit')
+        self.publish_from_other(lambda root: (root / REL).write_text((root / REL).read_text(encoding='utf-8') + '\nAfter both.\n'), 'fixture edit')
         output = self.replan('in')
         self.assertIn('COMMITS: 3', output)
         self.assertNotIn('SKILL_', output)
         self.execute('in')
         self.assertEqual(self.git(self.src, 'rev-parse', 'HEAD'), self.git(self.remote, 'rev-parse', 'main'))
-        self.assertIn('After both.', (self.dst / '.claude/CLAUDE.md').read_text())
+        self.assertIn('After both.', (self.dst / '.claude/CLAUDE.md').read_text(encoding='utf-8'))
         for target in self.skill_targets(self.SKILL):
             self.assertFalse(target.parent.exists())
         # 範圍外的路徑仍然被擋下，即使它放在 skill 的目錄裡
@@ -1140,7 +1140,7 @@ sys.exit(10 if secret else 0)
         self.publish_from_other(edit, 'fixture edit skill')
         plan_file, plan_id = self.auto_plan(config)
         self.assertIn('AUTO_IN', self.raw(['in', '--config', config, '--plan', plan_file]))
-        self.assertIn('Incoming skill edit.', self.skill_targets(self.SKILL)[1].read_text())
+        self.assertIn('Incoming skill edit.', self.skill_targets(self.SKILL)[1].read_text(encoding='utf-8'))
         self.publish_from_other(lambda root: self.remove_skill(root, self.SKILL), 'fixture remove skill')
         plan_file, plan_id = self.auto_plan(config)
         self.assertIn('PENDING_APPROVAL', self.raw(['in', '--config', config, '--plan', plan_file], expected=77))
@@ -1232,7 +1232,7 @@ class TemplateOnlyTests(WriteTests):
         self.incoming()
         self.replan('in')
         self.execute('in')
-        self.assertIn('Incoming shared edit.', (self.dst / '.codex/AGENTS.md').read_text())
+        self.assertIn('Incoming shared edit.', (self.dst / '.codex/AGENTS.md').read_text(encoding='utf-8'))
         self.assertIn('NO_CHANGES', self.skill_status())
 
     def test_first_skill_of_a_new_user(self):
