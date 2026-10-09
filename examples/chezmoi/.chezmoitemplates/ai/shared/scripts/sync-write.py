@@ -868,8 +868,8 @@ def configure(a):
     need(Path(a.config).is_absolute(), 'USAGE: absolute paths required', 64)
     try:
         values = api.load_config(a.config)
-    except (ValueError, OSError, api.ScanError):
-        raise Block(78, api.config_refused(a.config, 'INVALID_CONFIG')) from None
+    except (ValueError, OSError, api.ScanError) as error:
+        raise Block(78, api.config_refused(a.config, 'INVALID_CONFIG', str(error))) from None
     for key in ('source', 'destination', 'branch', 'scanner', 'profile', 'repository_profile'):
         if getattr(a, key) is None and key in values:
             setattr(a, key, values[key])
@@ -1012,8 +1012,9 @@ class Status:
             need(api.absolute_path(options['config']), 'USAGE: explicit absolute paths required', 64)
             try:
                 values = api.load_config(options['config'])
-            except (ValueError, OSError, api.ScanError):
-                raise Block(78, api.config_refused(options['config'], 'INVALID_CONFIG: reviewed local configuration required')) from None
+            except (ValueError, OSError, api.ScanError) as error:
+                raise Block(78, api.config_refused(options['config'], 'INVALID_CONFIG: reviewed local configuration required',
+                                                   str(error))) from None
             for key in ('source', 'destination', 'profile', 'repository_profile', 'scanner'):
                 if not options[key] and key in values:
                     options[key] = values[key]
