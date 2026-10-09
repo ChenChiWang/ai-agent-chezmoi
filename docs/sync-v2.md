@@ -388,6 +388,15 @@ root must not contain the scratch area becomes "the scratch area must not overla
 source or a deployment region" (since 2026-10-09, #39); every scratch directory is
 protected the moment it is created.
 
+Windows has no mode bits, so a snapshot there records the expected mode instead of a
+filesystem value (since 2026-10-09, #15 W4c): a source file carries its mode at `HEAD`
+(`644` for a new file), a deployed file the canonical mode of its mapping, anything else
+`644`. Content alone decides whether a source or target changed; the executable bit is
+owned by Git (`status` reads it from the index) and looser permissions are the ACL
+question above. No `mode=` line appears in a plan on Windows, `doctor` reports the
+chezmoi umask as not applicable, and a refused parameter file names the `icacls`
+command that makes it private.
+
 ## Transactions and recovery
 
 Before changing files, the engine rechecks the approved state and acquires Git's

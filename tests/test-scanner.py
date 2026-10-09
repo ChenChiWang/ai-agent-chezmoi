@@ -397,15 +397,49 @@ class PlatformTests(unittest.TestCase):
                 self.assertFalse(API["is_redirected"](Path("/x/missing")))
             self.assertFalse(conflict(home / ".local/share/chezmoi", home, home / "AppData/Local/Temp"))
             self.assertTrue(conflict(home / ".local/share/chezmoi", home, home / ".claude/tmp"))
-            self.assertTrue(conflict(home / ".local/share/chezmoi", home, home / ".config"))
+            self.assertTrue(conflict(home / ".local/share/chezmoi", home, home / ".claude"))
+            self.assertTrue(conflict(home / ".local/share/chezmoi", home, home / ".config/ai-agent/tmp"))
             self.assertTrue(conflict(home / ".local/share/chezmoi", home, home / ".local/share/chezmoi/tmp"))
-            self.assertTrue(conflict(home / ".local/share/chezmoi", home, home / ".local"))
+            # 暫存根底下的 source 或部署目錄本身不算：和 POSIX 允許 /tmp/src 一樣
+            self.assertFalse(conflict(home / "AppData/Local/Temp/fixture/src", home / "AppData/Local/Temp/fixture/dst",
+                                      home / "AppData/Local/Temp"))
+            self.assertFalse(conflict(home / ".local/share/chezmoi", home, home / ".config"))
         # POSIX 規則不變：root 不得等於或包含暫存根
         self.assertTrue(conflict(Path("/x"), Path("/tmp"), Path("/tmp")))
         self.assertTrue(conflict(Path("/x"), Path("/"), Path("/tmp")))
         self.assertTrue(conflict(Path("/tmp"), Path("/home/u"), Path("/tmp")))
         self.assertFalse(conflict(Path("/home/u/.local/share/chezmoi"), Path("/home/u"), Path("/tmp")))
         self.assertFalse(conflict(Path("/tmp/src"), Path("/home/u"), Path("/tmp")))
+
+    def test_mode_semantics_without_mode_bits(self):
+        # Windows 沒有 mode bits：快照記錄預期模式，執行位元以 index 為準，umask 檢查不適用（#15 W4c）
+        private = Path(self.temp.name) / "script"
+        private.write_bytes(b"#!/bin/sh\n")
+        private.chmod(0o755)
+        self.assertEqual(API["observed_mode"](private.stat(), 0o644), 0o755)
+        self.assertTrue(API["executable_bit"](private, "100644"))
+        self.assertTrue(API["target_executable"](private))
+        private.chmod(0o644)
+        self.assertFalse(API["executable_bit"](private, "100755"))
+        self.assertFalse(API["target_executable"](private))
+        self.assertTrue(API["umask_applies"]())
+        self.assertEqual(API["config_refused"](private, "INVALID_CONFIG"), "INVALID_CONFIG")
+        with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME):
+            self.assertEqual(API["observed_mode"](private.stat(), 0o755), 0o755)
+            self.assertTrue(API["executable_bit"](private, "100755"))
+            self.assertFalse(API["executable_bit"](private, "100644"))
+            self.assertFalse(API["executable_bit"](private, ""))
+            self.assertTrue(API["target_executable"](private))
+            self.assertFalse(API["umask_applies"]())
+            self.assertEqual(API["config_refused"](private, "INVALID_CONFIG"),
+                             "INVALID_CONFIG; " + API["private_hint"](private))
+        # 標準 target 模式與 mapping 一致：引擎腳本與相容入口 755，其餘 644
+        _, targets = API["mapping"]("claude-codex")
+        executables = {p for p in targets if API["target_mode"](p) == 0o755}
+        self.assertEqual(executables, {".config/ai-agent/bin/sync.sh", ".config/ai-agent/bin/scan-secrets.py",
+                                       ".config/ai-agent/bin/sync-write.py", ".config/ai-agent/bin/sync-migrate.py",
+                                       ".claude/skills/dotfiles-sync/sync.sh"})
+        self.assertEqual(API["target_modes"]([".claude/CLAUDE.md"]), {".claude/CLAUDE.md": 0o644})
 
     def test_private_checks_posix_and_windows(self):
         private = Path(self.temp.name) / "private"

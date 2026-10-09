@@ -475,8 +475,8 @@ def main():
     parser.add_argument('--scanner')
     parser.add_argument('--approve')
     args = parser.parse_args()
-    for path in (args.source, args.destination, args.backup, args.reference or '/', args.rules_map or '/', args.scanner or '/'):
-        w.need(Path(path).is_absolute(), 'USAGE: absolute paths required', 64)
+    for path in (args.source, args.destination, args.backup, args.reference, args.rules_map, args.scanner):
+        w.need(not path or Path(path).is_absolute(), 'USAGE: absolute paths required', 64)
     if args.command == 'plan':
         w.need(args.mode and args.reference and (args.mode != 'legacy' or args.rules_map), 'USAGE: conversion inputs required', 64)
     else:
