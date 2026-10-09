@@ -395,7 +395,11 @@ filesystem value (since 2026-10-09, #15 W4c): a source file carries its mode at 
 owned by Git (`status` reads it from the index) and looser permissions are the ACL
 question above. No `mode=` line appears in a plan on Windows, `doctor` reports the
 chezmoi umask as not applicable, and a refused parameter file names the `icacls`
-command that makes it private.
+command that makes it private. The entry point on Windows is unchanged: the Bash tool of
+Claude Code there is Git Bash, which runs `sh ~/.config/ai-agent/bin/sync.sh` and hands
+`~` paths to the native Python in Windows form; `scan-secrets.py --make-private PATH`
+protects the parameter file and `plan_dir` during bring-up (ACL on Windows, `chmod`
+elsewhere).
 
 ## Transactions and recovery
 

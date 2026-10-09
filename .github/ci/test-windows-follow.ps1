@@ -127,7 +127,7 @@ try {
     New-Item -ItemType Directory -Force -Path (Join-Path $fixtureHome '.config\ai-agent\bin') | Out-Null
     Set-Content -Path (Join-Path $fixtureHome '.config\ai-agent\bin\sync.sh') -Value '' -Encoding ASCII
     $r = Invoke-Follow @()
-    Assert-True ($r.Code -eq 65 -and $r.Out -match 'native Windows cannot run the engine') "engine guard: $($r.Out)"
+    Assert-True ($r.Code -eq 65 -and $r.Out -match 'the engine is deployed on this host') "engine guard: $($r.Out)"
 
     Write-Output 'OK windows-follow end-to-end checks'
 } finally {

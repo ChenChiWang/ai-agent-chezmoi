@@ -17,6 +17,12 @@ Current state only. Older round-by-round records are archived in
   protected DACL through `icacls` with SIDs and is read back. Verified on the Windows 11
   machine: a profile file with the inherited sandbox group is not private, `make_private`
   makes it so, and `load_config` accepts it.
+- **Native Windows bring-up** (#15 W5b): no new entry point. Claude Code's Bash tool on
+  Windows is Git Bash, where `preflight.sh`, `sh sync.sh` and the four pre-allowed rules
+  work unchanged; `preflight.sh` reports Git Bash as experimental instead of failing,
+  `scan-secrets.py --make-private` protects the parameter file and `plan_dir`, and
+  `AGENT-SETUP.md`, both READMEs and `docs/wsl.md` section 8 describe the path. The
+  follower script now refuses with "the engine is deployed on this host".
 - **Windows mode semantics** (#15 W4c, in W5): snapshots record the expected mode where
   there are no mode bits (`HEAD` for sources, the mapping for targets), `status` takes the
   executable bit from the index, `doctor` reports the umask as not applicable and a refused

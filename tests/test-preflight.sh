@@ -1,5 +1,5 @@
 #!/bin/sh
-# preflight 的平台檢查：原生 Windows 要 FAIL，POSIX 平台不得多出任何 platform 行；
+# preflight 的平台檢查：Git Bash 是 experimental 的 OK，Cygwin 要 FAIL，POSIX 平台不得多出任何 platform 行；
 # WSL 上解析到 Windows 磁碟的 claude 要 WARN。
 # 以 PATH shim 假造 uname、ssh、wslpath 與 claude，不連網、不讀使用者的 HOME。
 set -eu
@@ -39,11 +39,14 @@ expect_line() {
   grep -q "$1" "$test_root/output" || { echo "missing: $1 ($2)"; cat "$test_root/output"; exit 1; }
 }
 
-for os in MINGW64_NT-10.0-26200 MSYS_NT-10.0-26200 CYGWIN_NT-10.0-26200; do
+for os in MINGW64_NT-10.0-26200 MSYS_NT-10.0-26200; do
   run_preflight "$os"
-  expect_line "^FAIL platform: native Windows ($os) unsupported -> use WSL" "$os"
-  [ "$rc" != 0 ] || { echo "preflight exited 0 on $os"; exit 1; }
+  expect_line "^OK   platform: native Windows ($os) through Git Bash, experimental" "$os"
+  expect_line "^WARN engine: not deployed" "$os engine check without -x"
 done
+run_preflight CYGWIN_NT-10.0-26200
+expect_line "^FAIL platform: Cygwin (CYGWIN_NT-10.0-26200) unsupported -> use Git for Windows" Cygwin
+[ "$rc" != 0 ] || { echo "preflight exited 0 on Cygwin"; exit 1; }
 
 for os in Darwin Linux; do
   run_preflight "$os"

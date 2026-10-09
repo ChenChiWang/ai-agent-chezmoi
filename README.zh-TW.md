@@ -5,7 +5,7 @@
 把 Claude Code 與 Codex 的**可攜設定**（全域指示、skills、settings）放進一份 chezmoi source，
 同步到你的每一台機器，並讓 agent 自己在**開工與收工時安全地同步**：
 開工先拉最新、收工經你核准後才發布。macOS、Linux 與透過 WSL 的 Windows 可以完整同步；原生 Windows
-可以跟隨共用規則。見[平台](#平台)。
+經 Git Bash 也可以完整同步（experimental），或只跟隨共用規則。見[平台](#平台)。
 
 ## 讓 agent 幫你上線（推薦）
 
@@ -66,17 +66,18 @@ server、各自怎麼安裝、需要哪些環境變數的名稱（不寫值）�
 | macOS | 完整同步：上線、checkpoint、記錄與發布 | 實機；CI `macos-15` |
 | Linux | 完整同步 | CI `ubuntu-24.04` 執行全部測試；目前唯一的實機上線是在 WSL 內 |
 | Windows（透過 WSL2） | 完整同步，Claude Code 在 WSL 內執行（CLI，或以 WSL 模式開啟的 VS Code 擴充） | WSL2 Ubuntu 24.04 以 `claude` profile 實機上線一次；VS Code WSL 模式已驗證；CI `windows-2025 (WSL2 Ubuntu 24.04)`，umask `002`；Codex 尚未驗證 |
-| 原生 Windows | **只能跟隨**：用 `setup/windows-follow.ps1` 把共用規則套用到 Windows 端的 `~/.claude`（預覽、Gitleaks 掃描，再只套用你看過的版本）；不能記錄或發布，不部署引擎 | 實機；CI `windows-2025 (native follower)` |
+| 原生 Windows | **experimental 完整同步**：經 Git Bash（Windows 版 Claude Code 的 Bash 工具）上線、checkpoint、記錄與發布，指令完全相同。只想接收規則的機器仍可用跟隨模式 `setup/windows-follow.ps1`（預覽、Gitleaks 掃描，再只套用你看過的版本） | 實機 Windows 11 對 fixture source 跑完一輪 `plan`／`push`／`in`；原生引擎尚無 CI（#15 W6）；CI `windows-2025 (native follower)` |
 
-原生 Windows（包括 Git Bash）無法執行引擎：引擎依賴 POSIX 權限與執行位元、`os.getuid` 與 `/tmp`。
-原生 Windows 的完整同步規劃在 [#15](https://github.com/ChenChiWang/ai-agent-chezmoi/issues/15)。
-Windows 的說明見 [`docs/wsl.md`](./docs/wsl.md)：WSL 上線、VS Code，以及第 7 節的原生跟隨模式。
+原生 Windows 自 2026-10-09 起經 Git Bash 執行引擎：擁有者與權限用 ACL 判定、重導向涵蓋 junction、沒有
+mode bits（見 [`docs/sync-v2.md`](./docs/sync-v2.md) 的平台層）。在原生測試 job 出現之前都是 experimental，
+進度在 [#15](https://github.com/ChenChiWang/ai-agent-chezmoi/issues/15)。Windows 的說明見
+[`docs/wsl.md`](./docs/wsl.md)：WSL 上線、VS Code、第 7 節的跟隨模式與第 8 節的原生完整同步。
 
 ## 需求
 
 | 項目 | 要求 |
 |---|---|
-| 作業系統 | 完整同步：macOS、Linux，或透過 WSL2 的 Windows；只跟隨：原生 Windows（見[平台](#平台)） |
+| 作業系統 | 完整同步：macOS、Linux、透過 WSL2 的 Windows，或經 Git Bash 的原生 Windows（experimental）；原生 Windows 也可以只跟隨（見[平台](#平台)） |
 | Git | 2.45 以上（需支援 `--no-lazy-fetch`） |
 | chezmoi | 2.71 系列已測；本機的 `~/.config/chezmoi/chezmoi.toml` 要設定 `umask = 0o022`（上線流程會處理），部署權限才不會跟著 shell 的 umask |
 | Python | 3.9 以上，只用標準函式庫 |
@@ -147,8 +148,8 @@ sh ~/.config/ai-agent/bin/sync.sh push --config ~/.config/ai-agent/sync.local.js
 `check:*`、`doctor:*`、`plan:*`），所以開工檢查不會打擾你，`in` 與 `push` 則一定會先問。不要用涵蓋全部的
 `sync.sh:*`：它會讓寫入與發布不經詢問就執行，`doctor` 也會對它回報 WARN。
 
-**原生 Windows** 沒有引擎；從這個 repo 的 clone 分兩步把共用規則跟隨套用到 `~/.claude`（細節見
-[`docs/wsl.md`](./docs/wsl.md) 第 7 節）：
+**原生 Windows** 說同一句話就能經 Git Bash 上線（experimental，細節見 [`docs/wsl.md`](./docs/wsl.md)
+第 8 節）。只想接收共用規則的機器改用跟隨模式，分兩步套用到 `~/.claude`（第 7 節）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1                 # 預覽：不改任何東西

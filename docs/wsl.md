@@ -1,8 +1,8 @@
 # 在 Windows 上透過 WSL 上線
 
 > 對象：Windows 使用者，以及被指派協助上線的 agent。
-> 原生 Windows（Git Bash、MSYS2、Cygwin）無法執行引擎，preflight 會回報 `FAIL platform`。
-> 在 Windows 上唯一的做法是 WSL2：引擎、Claude Code 與 Codex 全部在 WSL 內執行。
+> Windows 有三條路：WSL2（第 1～5 節，正式支援）、原生 Windows 經 Git Bash 的完整同步（第 8 節，
+> experimental），以及只接收規則的跟隨模式（第 7 節）。Cygwin 不支援。
 
 WSL 內的上線流程跟 Linux 相同（`setup/AGENT-SETUP.md` 的 Step 1～7）。這份文件只記錄 WSL
 特有、而且實際上線時會踩到的地方。
@@ -102,8 +102,9 @@ agent 會照 `setup/AGENT-SETUP.md` 走 4A（或第一台機器走 4B），然�
 
 ## 6. 已知限制
 
-- **兩套 Claude 設定。** Windows 端的 `~/.claude` 不受 v2 引擎管理。同一台機器上如果 Windows 和
-  WSL 都在用 Claude Code，Windows 端只能用第 7 節的跟隨模式取得同一份規則，不能從那裡記錄或發布。
+- **兩套 Claude 設定。** 同一台機器上如果 Windows 和 WSL 都在用 Claude Code，兩邊各有一個 `~/.claude`。
+  Windows 端可以用第 7 節的跟隨模式只接收規則，或照第 8 節在原生 Windows 也部署引擎（兩邊各自記錄與
+  發布，透過同一個私有 remote 同步）。
 - **statusLine 需要 Node。** 如果 synced 的 `settings.json` 用 `npx` 啟動 statusLine，
   WSL 內也要有 Node；Claude Code 本身（native 版）不需要 Node。
 - **從 Windows 端的 agent 驅動 WSL。** PowerShell 傳給 `wsl -- bash -c '...'` 的引號會被
@@ -112,9 +113,9 @@ agent 會照 `setup/AGENT-SETUP.md` 走 4A（或第一台機器走 4B），然�
 
 ## 7. 原生 Windows 的跟隨模式
 
-原生 Windows 不跑引擎，但可以**跟隨**同一份共用規則：把私有 dotfiles 的內容套用到 Windows 端的
-`~/.claude`，讓 Windows 版 Claude Code（包括 Windows 模式的 VS Code）用到一樣的規則與 skills。
-規則的修改與發布要在 WSL 或 macOS／Linux 上做。
+只想讓 Windows 端的 `~/.claude` 拿到同一份規則、不打算在這台記錄或發布時，用跟隨模式：把私有 dotfiles
+的內容套用到 Windows 端的 `~/.claude`，讓 Windows 版 Claude Code（包括 Windows 模式的 VS Code）用到一樣
+的規則與 skills，不部署引擎。要在這台完整同步就改走第 8 節；兩者不能同時用，跟隨模式看到引擎已部署會停下。
 
 一次性準備（PowerShell）：
 
@@ -142,10 +143,32 @@ powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1 -Apply -Expect
 不要用不帶路徑的 `chezmoi apply` 或 `chezmoi update`：它們會把引擎部署到 `~/.config/ai-agent`，
 這台就變成「有引擎、沒參數檔」，被共用指示當成上線不完整而每次回報。
 
+## 8. 原生 Windows 的完整同步（experimental）
+
+Windows 版 Claude Code 的 Bash 工具是 Git for Windows 的 Git Bash，`sh ~/.config/ai-agent/bin/sync.sh ...`
+在裡面直接可用（`~` 路徑由 MSYS 轉成 Windows 路徑交給原生 Python）。所以上線流程就是
+`setup/AGENT-SETUP.md` 的 Step 1～7，差異只有：
+
+1. 工具用 winget 裝（Git、Python 3、chezmoi），Gitleaks 用 `setup/install-gitleaks.ps1`，並把 `~/.local/bin`
+   加進 PATH。`preflight.sh` 在 Git Bash 執行，會印 `OK platform: native Windows ... experimental`。
+2. 不需要 chezmoi 的 `umask` 設定（NTFS 沒有 mode bits，`doctor` 會回報 not applicable）。
+3. 參數檔的路徑用 `C:/Users/you/...` 的形式，寫完後用
+   `python3 ~/.config/ai-agent/bin/scan-secrets.py --make-private <檔案或目錄>` 把參數檔與 `plan_dir`
+   設成私有（移除繼承的 ACL，只授權使用者、SYSTEM、Administrators）。沒做這一步，每個指令都會以
+   `INVALID_CONFIG; icacls ...` 拒絕並印出等價指令。
+4. `settings.json` 的四條唯讀權限規則與 POSIX 相同，不用改。
+
+原生 Windows 的語意（見 `docs/sync-v2.md` 平台層）：擁有者與權限以 ACL 判定；重導向包含 junction 與其他
+reparse point；快照記錄的是預期模式（source 以 HEAD 為準、target 以 mapping 為準），執行位元由 git 承擔；
+暫存區在 `%TEMP%`，每個暫存目錄建立時就設成私有。目前的證據是實機對 fixture source 跑完一輪
+`doctor`、`status`、`check`、`plan push`、`push`、`check`、`plan in`、`in`；原生引擎的測試與 CI job 是
+#15 的 W6，之後才會從 experimental 升級。
+
 ## 驗證紀錄
 
 | 日期 | 環境 | 結果 |
 | --- | --- | --- |
 | 2026-09-26 | Windows 11 Pro 10.0.26200、WSL2 Ubuntu 24.04.1（kernel 6.18.33.2-microsoft-standard-WSL2）；git 2.55.0（PPA）、chezmoi 2.71.1、Python 3.12.3、Gitleaks 8.30.1、Claude Code 2.1.283；profile `claude`，repository profile `claude-codex`，路徑 4A | preflight 0 fail；`doctor` 13 ok／0 warn／0 fail；`status` `NO_CHANGES`；`check` `UP_TO_DATE`。Codex 與 `tests/session-acceptance.sh` 未驗證 |
 | 2026-09-27 | 同上機器的原生 Windows 端；Windows PowerShell 5.1、chezmoi 2.71.0（winget）、Gitleaks 8.30.1 | `setup/windows-follow.ps1` 對真實私有 dotfiles 預覽：遠端 40 個檔案掃描乾淨、`NO_CHANGES`；`.github/ci/test-windows-follow.ps1` 的端對端情境全部通過 |
+| 2026-10-09 | 同上機器的原生 Windows 端；Python 3.14、Git 2.46.2、chezmoi 2.71.0、Gitleaks 8.30.1、Windows PowerShell 5.1 與 Git Bash | 引擎對 `%TEMP%` 下的 fixture source 與 bare remote 跑完 `doctor`（14 ok／0 fail）、`status`、`check`、`plan push`、`push`（HEAD 的 `.py` 保持 100755）、`check`（BEHIND 1）、`plan in`、`in`、`status`（NO_CHANGES）；對真實私有 source 的 `status` 只回報缺少的引擎目標；`preflight.sh` 在 Git Bash 0 fail |
 | 2026-09-27 | 同上機器；VS Code 1.137.0 以 WSL 模式開啟，WSL 內安裝 Claude Code 擴充 2.1.283（使用擴充自帶的 `native-binary/claude`） | 新對話的第一個工具呼叫就是開工檢查（`NO_CHANGES`、`CHECKED_TODAY`），之後才讀專案；session 紀錄寫在 WSL 的 `~/.claude/projects/` |

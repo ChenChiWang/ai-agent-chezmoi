@@ -441,6 +441,27 @@ class PlatformTests(unittest.TestCase):
                                        ".claude/skills/dotfiles-sync/sync.sh"})
         self.assertEqual(API["target_modes"]([".claude/CLAUDE.md"]), {".claude/CLAUDE.md": 0o644})
 
+    def test_protect_and_make_private_entry(self):
+        # 上線用的 --make-private：POSIX 是 chmod 600／700，Windows 交給 make_private
+        target = Path(self.temp.name) / "params.json"
+        target.write_bytes(b"{}")
+        target.chmod(0o644)
+        API["protect"](target)
+        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+        plans = Path(self.temp.name) / "plans"
+        plans.mkdir(mode=0o755)
+        API["protect"](plans)
+        self.assertEqual(plans.stat().st_mode & 0o777, 0o700)
+        target.chmod(0o644)
+        run = subprocess.run([sys.executable, str(ADAPTER), "--make-private", str(target)], capture_output=True, text=True)
+        self.assertEqual((run.returncode, run.stdout.strip()), (0, "OK: " + str(target) + " is private"))
+        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+        for bad in ("relative", str(Path(self.temp.name) / "missing")):
+            self.assertEqual(subprocess.run([sys.executable, str(ADAPTER), "--make-private", bad], capture_output=True).returncode, 70)
+        with self.windows(), mock.patch.dict(API["replace"].__globals__, make_private=mock.Mock()) as patched:
+            API["protect"](target)
+            patched["make_private"].assert_called_once_with(target)
+
     def test_private_checks_posix_and_windows(self):
         private = Path(self.temp.name) / "private"
         private.write_bytes(b"{}")

@@ -11,9 +11,11 @@ fail() { printf 'FAIL %s: %s -> %s\n' "$1" "$2" "$3"; fails=$((fails+1)); }
 vge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -t. -k1,1n -k2,2n -k3,3n | head -1)" = "$2" ]; }
 
 echo "platform: $(uname -s) $(uname -m)"
-# 原生 Windows（Git Bash、MSYS2、Cygwin）引擎無法執行；只在這些平台多印一行，POSIX 輸出不變。
+# 原生 Windows：Git Bash（MINGW／MSYS）是 Windows 版 Claude Code 的 Bash 工具，引擎經由它執行（experimental，#15）；
+# Cygwin 未支援。只在這些平台多印一行，POSIX 輸出不變。
 case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) fail platform "native Windows ($(uname -s)) unsupported" "use WSL, with Claude Code and Codex installed inside WSL (README: Requirements); to only follow ~/.claude on this host, run setup/windows-follow.ps1 (docs/wsl.md)" ;;
+  MINGW*|MSYS*) ok platform "native Windows ($(uname -s)) through Git Bash, experimental (docs/wsl.md section 8)" ;;
+  CYGWIN*) fail platform "Cygwin ($(uname -s)) unsupported" "use Git for Windows (Git Bash) or WSL (docs/wsl.md)" ;;
 esac
 if command -v git >/dev/null 2>&1; then
   gv=$(git --version | sed -E 's/.*version ([0-9.]+).*/\1/')
@@ -53,7 +55,9 @@ agent_cli claude "Claude Code"
 agent_cli codex "Codex CLI"
 src=${CHEZMOI_SOURCE:-$HOME/.local/share/chezmoi}
 [ -d "$src/.git" ] && ok chezmoi_source "$src" || warn chezmoi_source "$src not initialized" "chezmoi init <private remote> (then diff, then apply)"
-[ -x "$HOME/.config/ai-agent/bin/sync.sh" ] && ok engine "deployed at ~/.config/ai-agent/bin" || warn engine "not deployed" "chezmoi apply deploys it"
+# NTFS 沒有執行位元：原生 Windows 只看檔案是否存在
+engine_test=-x; case "$(uname -s)" in MINGW*|MSYS*) engine_test=-f ;; esac
+[ $engine_test "$HOME/.config/ai-agent/bin/sync.sh" ] && ok engine "deployed at ~/.config/ai-agent/bin" || warn engine "not deployed" "chezmoi apply deploys it"
 [ -f "$HOME/.config/ai-agent/sync.local.json" ] && ok params "~/.config/ai-agent/sync.local.json present" || warn params "no parameter file" "write it after apply, with writer/auto_in confirmed by the user"
 echo "PREFLIGHT: $fails fail, $warns warn"
 [ "$fails" = 0 ]
