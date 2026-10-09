@@ -23,6 +23,23 @@ API = runpy.run_path(str(ADAPTER))
 LOCATION = "source/.chezmoitemplates/ai/shared/instructions.md"
 REL = ".chezmoitemplates/ai/adapters/codex.md"
 REAL_GITLEAKS = shutil.which("gitleaks")
+# 原生 Windows（#15 W6）：夾具經由平台層取得暫存根與子程序環境；sh 腳本的 shim 由 Git Bash 的 sh 執行
+WINDOWS = API["WINDOWS"]
+SH = shutil.which("sh") or "sh"
+
+
+def shim(path, body):
+    """以 sh 腳本假冒一個指令。Windows 沒有 shebang：寫成 <name>.sh 加 <name>.cmd 包裝；
+    shutil.which 會經 PATHEXT 找到 .cmd，直接以絕對路徑執行。回傳要放進 PATH 搜尋的那個檔案。"""
+    if WINDOWS:
+        script = path.with_name(path.name + ".sh")
+        script.write_text("#!/bin/sh\n" + body, newline="\n")
+        wrapper = path.with_name(path.name + ".cmd")
+        wrapper.write_text('@"%s" "%%~dp0%s" %%*\r\n' % (SH, script.name))
+        return wrapper
+    path.write_text("#!/bin/sh\n" + body)
+    path.chmod(0o755)
+    return path
 
 
 def synthetic():
@@ -45,14 +62,14 @@ QUIET_GIT = dict(GIT_CONFIG_COUNT="3", GIT_CONFIG_KEY_0="maintenance.auto", GIT_
 
 class ScannerTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="scanner-test-", dir="/tmp")
+        self.temp = tempfile.TemporaryDirectory(prefix="scanner-test-", dir=str(API["temporary_root"]()))
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
         self.snapshot = self.root / "snapshot 中文 space"
         self.snapshot.mkdir()
         (self.root / "home").mkdir()
-        self.env = {"PATH": os.environ["PATH"], "HOME": str(self.root / "home"),
-                    "LC_ALL": "C", "TMPDIR": str(self.root)}
+        # POSIX 上與原本的 PATH/HOME/LC_ALL 相同；Windows 多出 git 與 chezmoi 需要的系統變數
+        self.env = dict(API["child_environment"](self.root / "home", os.environ["PATH"]), TMPDIR=str(self.root))
         self.report = self.root / "safe-report.json"
 
     def put(self, value, location=LOCATION):
@@ -115,9 +132,7 @@ class ScannerTests(unittest.TestCase):
     def fake_binary(self, body):
         bindir = self.root / "bin"
         bindir.mkdir(exist_ok=True)
-        p = bindir / "gitleaks"
-        p.write_text("#!/bin/sh\n" + body)
-        p.chmod(0o755)
+        shim(bindir / "gitleaks", body)
         return dict(self.env, PATH=str(bindir) + os.pathsep + self.env["PATH"])
 
     def test_wrong_version_and_scan_failures(self):
@@ -155,6 +170,9 @@ class ScannerTests(unittest.TestCase):
             self.put(content)
             self.run_scan(70)
         p = self.put("clean")
+        if WINDOWS:
+            # chmod(0) 在 NTFS 只是唯讀，檔案仍可讀；symlink 需要特權。Windows 的重導向由 PlatformTests 以 junction 驗證
+            return
         p.chmod(0)
         try:
             # Avoid tree() opening a deliberately unreadable file.
@@ -212,7 +230,7 @@ class EngineTests(ScannerTests):
         deployed_engine = dst / ".config/ai-agent/bin/sync.sh"
         def status(expected, location=None):
             before = (tree(src), tree(dst))
-            result = subprocess.run(["sh", str(deployed_engine), "status", "--source", str(src),
+            result = subprocess.run([SH, str(deployed_engine), "status", "--source", str(src),
                                      "--destination", str(dst)], env=self.env, capture_output=True)
             self.assertEqual(result.returncode, expected, "engine result")
             self.assertEqual((tree(src), tree(dst)), before, "engine changed fixture")
@@ -244,16 +262,16 @@ class EngineTests(ScannerTests):
         baseline.write_bytes(run(["git", "-C", str(src), "ls-files", "--stage"]))
         (src / REL).write_bytes(original)
         run(["git", "-C", str(src), "add", REL])
-        bindir = self.root / "bin"
-        bindir.mkdir(exist_ok=True)
-        git = bindir / "git"
-        git.write_text("#!/bin/sh\n" +
-            'if [ "$8" = rev-parse ] && [ "${9:-}" = --verify ]; then echo synthetic-head; exit 0; fi\n' +
-            'if [ "$8" = ls-tree ]; then awk -v target="${11}" \'$4 == target {printf "%s blob %s\\t%s\\n", $1, $2, $4}\' ' + shlex.quote(str(baseline)) + '; exit 0; fi\n' +
-            'exec ' + shlex.quote(shutil.which("git")) + ' "$@"\n')
-        git.chmod(0o755)
-        self.env["PATH"] = str(bindir) + os.pathsep + self.env["PATH"]
-        status(67, "head/" + REL)
+        if not WINDOWS:
+            # Windows 的 CreateProcess 以 git 這個名字只找 git.exe，攔不到 .cmd shim；synthetic HEAD 的情境只在 POSIX 驗證
+            bindir = self.root / "bin"
+            bindir.mkdir(exist_ok=True)
+            shim(bindir / "git",
+                 'if [ "$8" = rev-parse ] && [ "${9:-}" = --verify ]; then echo synthetic-head; exit 0; fi\n' +
+                 'if [ "$8" = ls-tree ]; then awk -v target="${11}" \'$4 == target {printf "%s blob %s\\t%s\\n", $1, $2, $4}\' ' + shlex.quote(str(baseline)) + '; exit 0; fi\n' +
+                 'exec ' + shlex.quote(shutil.which("git")) + ' "$@"\n')
+            self.env["PATH"] = str(bindir) + os.pathsep + self.env["PATH"]
+            status(67, "head/" + REL)
         # Scanner dependency failure is distinct from a clean/secret result.
         self.env["PATH"] = os.defpath + os.pathsep + "/opt/homebrew/bin"
         self.assertTrue(b"MISSING_DEPENDENCY:" in status(69))
@@ -265,9 +283,13 @@ class EngineTests(ScannerTests):
             {"file": LOCATION, "rule": "github-pat", "line": 1},
             {"file": synthetic(), "rule": "github-pat", "line": 1},
         ]}
-        bad.write_text("#!/bin/sh\nprintf '%s\\n' " + shlex.quote(json.dumps(bad_report)) + ' > "$2"\nexit 10\n')
-        bad.chmod(0o755)
-        result = subprocess.run(["sh", str(deployed_engine), "status", "--source", str(src),
+        if WINDOWS:
+            # 引擎在 Windows 以 Python 執行 scanner：壞的 adapter 也用 Python 寫
+            bad.write_text("import pathlib, sys\npathlib.Path(sys.argv[2]).write_text(" + repr(json.dumps(bad_report)) + ")\nsys.exit(10)\n")
+        else:
+            bad.write_text("#!/bin/sh\nprintf '%s\\n' " + shlex.quote(json.dumps(bad_report)) + ' > "$2"\nexit 10\n')
+            bad.chmod(0o755)
+        result = subprocess.run([SH, str(deployed_engine), "status", "--source", str(src),
                                  "--destination", str(dst), "--scanner", str(bad)], env=self.env, capture_output=True)
         self.assertEqual(result.returncode, 70)
         self.assertTrue(b"SCANNER_ERROR:" in result.stdout)
@@ -281,6 +303,7 @@ class PlatformTests(unittest.TestCase):
         # runpy 回傳的是模組 globals 的複本；要改到函式真正讀取的那份
         return mock.patch.dict(API["replace"].__globals__, WINDOWS=True)
 
+    @unittest.skipIf(WINDOWS, "POSIX branch of the platform layer")
     def test_posix_behaviour_unchanged(self):
         self.assertFalse(API["WINDOWS"])
         self.assertEqual(API["temporary_root"](), Path("/tmp"))
@@ -419,6 +442,8 @@ class PlatformTests(unittest.TestCase):
             self.assertFalse(conflict(home / "AppData/Local/Temp/fixture/src", home / "AppData/Local/Temp/fixture/dst",
                                       home / "AppData/Local/Temp"))
             self.assertFalse(conflict(home / ".local/share/chezmoi", home, home / ".config"))
+        if WINDOWS:
+            return
         # POSIX 規則不變：root 不得等於或包含暫存根
         self.assertTrue(conflict(Path("/x"), Path("/tmp"), Path("/tmp")))
         self.assertTrue(conflict(Path("/x"), Path("/"), Path("/tmp")))
@@ -426,19 +451,53 @@ class PlatformTests(unittest.TestCase):
         self.assertFalse(conflict(Path("/home/u/.local/share/chezmoi"), Path("/home/u"), Path("/tmp")))
         self.assertFalse(conflict(Path("/tmp/src"), Path("/home/u"), Path("/tmp")))
 
+    @unittest.skipUnless(WINDOWS, "real ACLs and junctions exist only on Windows")
+    def test_windows_real_acl_and_junction(self):
+        # 不用 mock：真的檔案、真的 icacls、真的 junction
+        root = Path(self.temp.name)
+        target = root / "params.json"
+        target.write_bytes(b"{}")
+        me = API["current_user_sid"]()
+        self.assertTrue(me.startswith("S-1-5-21-"))
+        self.assertEqual(API["security_descriptor"](target)[0], me)
+        subprocess.run(["icacls", str(target), "/grant", "*S-1-1-0:W"], check=True, capture_output=True)
+        self.assertFalse(API["private_file"](target, target.stat()))
+        self.assertTrue(API["foreign_writable"](target, target.stat()))
+        API["make_private"](target)
+        self.assertTrue(API["private_file"](target, target.stat()))
+        self.assertFalse(API["foreign_writable"](target, target.stat()))
+        plans = root / "plans"
+        plans.mkdir()
+        API["make_private"](plans)
+        self.assertEqual(API["private_directory_report"](plans)[:2], (True, " acl private"))
+        child = plans / "child.json"
+        child.write_bytes(b"{}")
+        self.assertTrue(API["private_mode"](child, 0o600), "children inherit the private DACL")
+        aside = root / "aside"
+        aside.mkdir()
+        junction = root / "junction"
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(junction), str(aside)], check=True, capture_output=True)
+        self.assertTrue(API["is_redirected"](junction))
+        self.assertFalse(API["is_redirected"](aside))
+        os.rmdir(junction)
+        temp_root = API["temporary_root"]()
+        self.assertFalse(API["scratch_conflict"](root / "src", root / "dst", temp_root))
+        self.assertTrue(API["scratch_conflict"](temp_root / "src", root / "dst", temp_root / "src" / "tmp"))
+
     def test_mode_semantics_without_mode_bits(self):
         # Windows 沒有 mode bits：快照記錄預期模式，執行位元以 index 為準，umask 檢查不適用（#15 W4c）
         private = Path(self.temp.name) / "script"
         private.write_bytes(b"#!/bin/sh\n")
-        private.chmod(0o755)
-        self.assertEqual(API["observed_mode"](private.stat(), 0o644), 0o755)
-        self.assertTrue(API["executable_bit"](private, "100644"))
-        self.assertTrue(API["target_executable"](private))
-        private.chmod(0o644)
-        self.assertFalse(API["executable_bit"](private, "100755"))
-        self.assertFalse(API["target_executable"](private))
-        self.assertTrue(API["umask_applies"]())
-        self.assertEqual(API["config_refused"](private, "INVALID_CONFIG"), "INVALID_CONFIG")
+        if not WINDOWS:
+            private.chmod(0o755)
+            self.assertEqual(API["observed_mode"](private.stat(), 0o644), 0o755)
+            self.assertTrue(API["executable_bit"](private, "100644"))
+            self.assertTrue(API["target_executable"](private))
+            private.chmod(0o644)
+            self.assertFalse(API["executable_bit"](private, "100755"))
+            self.assertFalse(API["target_executable"](private))
+            self.assertTrue(API["umask_applies"]())
+            self.assertEqual(API["config_refused"](private, "INVALID_CONFIG"), "INVALID_CONFIG")
         with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME):
             self.assertEqual(API["observed_mode"](private.stat(), 0o755), 0o755)
             self.assertTrue(API["executable_bit"](private, "100755"))
@@ -457,20 +516,24 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(API["target_modes"]([".claude/CLAUDE.md"]), {".claude/CLAUDE.md": 0o644})
 
     def test_protect_and_make_private_entry(self):
-        # 上線用的 --make-private：POSIX 是 chmod 600／700，Windows 交給 make_private
+        # 上線用的 --make-private：POSIX 是 chmod 600／700，Windows 交給 make_private（這裡會真的設 ACL）
         target = Path(self.temp.name) / "params.json"
         target.write_bytes(b"{}")
-        target.chmod(0o644)
-        API["protect"](target)
-        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
         plans = Path(self.temp.name) / "plans"
         plans.mkdir(mode=0o755)
-        API["protect"](plans)
-        self.assertEqual(plans.stat().st_mode & 0o777, 0o700)
-        target.chmod(0o644)
+        if not WINDOWS:
+            target.chmod(0o644)
+            API["protect"](target)
+            self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+            API["protect"](plans)
+            self.assertEqual(plans.stat().st_mode & 0o777, 0o700)
+            target.chmod(0o644)
         run = subprocess.run([sys.executable, str(ADAPTER), "--make-private", str(target)], capture_output=True, text=True)
         self.assertEqual((run.returncode, run.stdout.strip()), (0, "OK: " + str(target) + " is private"))
-        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+        if WINDOWS:
+            self.assertTrue(API["private_file"](target, target.stat()))
+        else:
+            self.assertEqual(target.stat().st_mode & 0o777, 0o600)
         for bad in ("relative", str(Path(self.temp.name) / "missing")):
             self.assertEqual(subprocess.run([sys.executable, str(ADAPTER), "--make-private", bad], capture_output=True).returncode, 70)
         with self.windows(), mock.patch.dict(API["replace"].__globals__, make_private=mock.Mock()) as patched:
@@ -480,25 +543,26 @@ class PlatformTests(unittest.TestCase):
     def test_private_checks_posix_and_windows(self):
         private = Path(self.temp.name) / "private"
         private.write_bytes(b"{}")
-        private.chmod(0o600)
-        self.assertTrue(API["private_file"](private, private.stat()))
-        self.assertTrue(API["private_mode"](private, 0o600))
-        self.assertFalse(API["private_mode"](private, 0o640))
-        self.assertFalse(API["foreign_writable"](private, private.stat()))
-        private.chmod(0o664)
-        self.assertFalse(API["private_file"](private, private.stat()))
-        self.assertTrue(API["foreign_writable"](private, private.stat()))
-        self.assertEqual(API["private_hint"](private), "chmod 600 " + str(private))
-        self.assertEqual(API["private_hint"](Path(self.temp.name)), "chmod 700 " + self.temp.name)
         directory = Path(self.temp.name) / "plans"
         directory.mkdir(mode=0o700)
-        self.assertEqual(API["private_directory_report"](directory), (True, " mode 700", ""))
-        directory.chmod(0o750)
-        self.assertEqual(API["private_directory_report"](directory), (False, " mode 750", "chmod 700 " + str(directory)))
-        # POSIX 的 make_private 不做任何事，也不呼叫 icacls
-        with mock.patch("subprocess.run") as run:
-            API["make_private"](private)
-        run.assert_not_called()
+        if not WINDOWS:
+            private.chmod(0o600)
+            self.assertTrue(API["private_file"](private, private.stat()))
+            self.assertTrue(API["private_mode"](private, 0o600))
+            self.assertFalse(API["private_mode"](private, 0o640))
+            self.assertFalse(API["foreign_writable"](private, private.stat()))
+            private.chmod(0o664)
+            self.assertFalse(API["private_file"](private, private.stat()))
+            self.assertTrue(API["foreign_writable"](private, private.stat()))
+            self.assertEqual(API["private_hint"](private), "chmod 600 " + str(private))
+            self.assertEqual(API["private_hint"](Path(self.temp.name)), "chmod 700 " + self.temp.name)
+            self.assertEqual(API["private_directory_report"](directory), (True, " mode 700", ""))
+            directory.chmod(0o750)
+            self.assertEqual(API["private_directory_report"](directory), (False, " mode 750", "chmod 700 " + str(directory)))
+            # POSIX 的 make_private 不做任何事，也不呼叫 icacls
+            with mock.patch("subprocess.run") as run:
+                API["make_private"](private)
+            run.assert_not_called()
         with self.windows(), mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME), \
                 mock.patch.dict(API["replace"].__globals__, security_descriptor=lambda p: API["parse_sddl"](self.INHERITED)):
             self.assertFalse(API["private_file"](private, private.stat()))
@@ -530,7 +594,7 @@ class PlatformTests(unittest.TestCase):
                 API["make_private"](private)
 
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="platform-test-", dir="/tmp")
+        self.temp = tempfile.TemporaryDirectory(prefix="platform-test-", dir=str(API["temporary_root"]()))
         self.addCleanup(self.temp.cleanup)
 
 

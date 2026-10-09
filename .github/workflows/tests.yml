@@ -62,9 +62,14 @@ jobs:
         run: |
           powershell -NoProfile -ExecutionPolicy Bypass -File .github\ci\install-windows-tools.ps1
           "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          # Git Bash 的 sh：測試用它執行 sh sync.sh 與 sh 腳本的 shim
+          "C:\Program Files\Git\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Native engine end-to-end
         shell: powershell
         run: python .github\ci\test-windows-engine.py
+      - name: Scanner and platform tests natively
+        shell: powershell
+        run: python tests\test-scanner.py
 
   wsl:
     name: windows-2025 (WSL2 Ubuntu 24.04)

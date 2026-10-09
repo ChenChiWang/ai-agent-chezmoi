@@ -17,6 +17,13 @@ Current state only. Older round-by-round records are archived in
   protected DACL through `icacls` with SIDs and is read back. Verified on the Windows 11
   machine: a profile file with the inherited sandbox group is not private, `make_private`
   makes it so, and `load_config` accepts it.
+- **Native scanner tests** (#15 W6b): `tests/test-scanner.py` runs on native Windows (17 of
+  18, one POSIX-only test skipped): fixtures take the temporary root and the child
+  environment from the platform layer, shell shims get a `.cmd` wrapper run by Git Bash
+  (a `git` shim cannot be intercepted that way, so the synthetic-HEAD scenario stays POSIX),
+  POSIX-only assertions are guarded, and a Windows-only test uses real ACLs and a real
+  junction. The native job runs it after the engine loop. `test-write.py` and the other
+  POSIX files are not ported yet.
 - **Native engine CI** (#15 W6a): `.github/ci/test-windows-engine.py` runs the fixture loop
   natively with 70 assertions (refusal of an open parameter file with its `icacls` hint,
   `--make-private`, `doctor`, `status`, `check`, `plan push`, `push` with the executable bits
