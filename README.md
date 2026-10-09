@@ -6,7 +6,8 @@ Keep the **portable parts** of your Claude Code and Codex configuration (global
 instructions, skills, settings) in one chezmoi source, sync it to every machine you
 use, and let the agents themselves **sync safely at the start and end of work**: pull
 before starting, publish only after you approve. Full sync runs on macOS, Linux and
-Windows through WSL; native Windows can follow the shared rules. See [Platforms](#platforms).
+Windows through WSL, and experimentally on native Windows through Git Bash; a Windows host
+can also just follow the shared rules. See [Platforms](#platforms).
 
 ## Let an agent bring a machine up (recommended)
 
@@ -84,19 +85,21 @@ pre-allowed, so `in` and `push` always go through Claude Code's permission promp
 | macOS | full sync: bring-up, checkpoints, recording and publishing | real machines; CI `macos-15` |
 | Linux | full sync | CI `ubuntu-24.04` runs every test; the only real bring-up so far is inside WSL |
 | Windows through WSL2 | full sync, with Claude Code running inside WSL (the CLI, or the VS Code extension in a WSL window) | one real bring-up on WSL2 Ubuntu 24.04 with the `claude` profile; VS Code WSL mode verified; CI `windows-2025 (WSL2 Ubuntu 24.04)` under umask `002`; Codex unverified |
-| Native Windows | **follow only**: receive the shared rules into the Windows `~/.claude` with `setup/windows-follow.ps1` (preview, Gitleaks scan, then apply exactly what you saw); no recording or publishing, no engine | real machine; CI `windows-2025 (native follower)` |
+| Native Windows | **experimental full sync** through Git Bash, the shell Claude Code uses on Windows: bring-up, checkpoints, recording and publishing with the same commands. The follower mode (`setup/windows-follow.ps1`: preview, Gitleaks scan, then apply exactly what you saw) stays for a host that should only receive the rules | one complete `plan`/`push`/`in` loop against a fixture source on a real Windows 11 machine; no native engine CI yet (#15, W6); CI `windows-2025 (native follower)` |
 
-Native Windows (Git Bash included) cannot run the engine: it relies on POSIX
-permissions and executable bits, `os.getuid` and `/tmp`. Full native Windows sync is
-planned in [#15](https://github.com/ChenChiWang/ai-agent-chezmoi/issues/15). The
-Windows guide is [`docs/wsl.md`](./docs/wsl.md) (Traditional Chinese): WSL bring-up,
-VS Code, and the native follower in section 7.
+Native Windows runs the engine through Git Bash since 2026-10-09: ownership and
+permissions are ACLs, redirections include junctions, and there are no mode bits (see the
+platform layer in [`docs/sync-v2.md`](./docs/sync-v2.md)). It stays experimental until a
+native test job exists; progress is tracked in
+[#15](https://github.com/ChenChiWang/ai-agent-chezmoi/issues/15). The Windows guide is
+[`docs/wsl.md`](./docs/wsl.md) (Traditional Chinese): WSL bring-up, VS Code, the native
+follower in section 7 and the native full sync in section 8.
 
 ## Requirements
 
 | Item | Requirement |
 |---|---|
-| Operating system | macOS, Linux, or Windows through WSL2 for full sync; native Windows for follow-only (see [Platforms](#platforms)) |
+| Operating system | macOS, Linux, Windows through WSL2, or native Windows through Git Bash (experimental) for full sync; a native Windows host can also follow only (see [Platforms](#platforms)) |
 | Git | 2.45 or newer (`--no-lazy-fetch` support) |
 | chezmoi | 2.71 series tested; the machine-local `~/.config/chezmoi/chezmoi.toml` sets `umask = 0o022` (bring-up does this) so deployed modes do not follow the shell umask |
 | Python | 3.9 or newer, standard library only |
@@ -174,16 +177,17 @@ so the start checkpoint runs without a prompt while `in` and `push` always ask. 
 use the broad `sync.sh:*` form: it lets writes and publication run unprompted, and
 `doctor` warns about it.
 
-On **native Windows** there is no engine; from a clone of this repository, follow the
-shared rules into `~/.claude` in two steps (details in [`docs/wsl.md`](./docs/wsl.md),
-section 7):
+On **native Windows** the same sentence works through Git Bash (experimental; details in
+[`docs/wsl.md`](./docs/wsl.md), section 8). A host that should only receive the shared
+rules can instead follow them into `~/.claude` in two steps (section 7):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1                 # preview: changes nothing
 powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1 -Apply -Expect <REMOTE_HEAD>
 ```
 
-Never run a plain `chezmoi apply` or `chezmoi update` there: it would deploy the engine.
+On a follower host never run a plain `chezmoi apply` or `chezmoi update`: it would deploy
+the engine, which is what the full sync wants and the follower refuses.
 
 ## First machine (no private repository yet)
 
@@ -211,7 +215,7 @@ it over an existing agent configuration.
 | [`AGENTS.md`](./AGENTS.md) | working in this repository: what belongs here, the GitHub workflow, tests; `CLAUDE.md` imports it |
 | [`setup/AGENT-SETUP.md`](./setup/AGENT-SETUP.md) | bring-up manual for an agent; each step marked "you do" or "ask the user" |
 | [`docs/new-machine.md`](./docs/new-machine.md) | bring-up and acceptance guide for humans, result-code table, cross-machine end-to-end test (zh-TW) |
-| [`docs/wsl.md`](./docs/wsl.md) | Windows: WSL bring-up, VS Code in WSL mode, the native follower, known limits, verification record (zh-TW) |
+| [`docs/wsl.md`](./docs/wsl.md) | Windows: WSL bring-up, VS Code in WSL mode, the native follower, the native full sync, known limits, verification record (zh-TW) |
 | [`docs/sync-v2.md`](./docs/sync-v2.md) | engine contract: profiles, parameter file, roles, plans, locks, recovery |
 | [`docs/secret-scanner.md`](./docs/secret-scanner.md) | scanner contract and tests |
 | [`docs/production-layout.md`](./docs/production-layout.md) | safety boundaries when the source lives under HOME |

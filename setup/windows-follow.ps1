@@ -1,5 +1,5 @@
-# 原生 Windows 的跟隨模式：只把私有 dotfiles 的共用設定套用到 ~/.claude。
-# 不部署同步引擎、不修改或發布規則；那些在 WSL 或 macOS/Linux 上進行（docs/wsl.md）。
+# 原生 Windows 的跟隨模式：只把私有 dotfiles 的共用設定套用到 ~/.claude，不部署同步引擎、不修改或發布規則。
+# 要在這台完整同步（記錄與發布）就照 docs/wsl.md 第 8 節經 Git Bash 部署引擎，不用這個腳本。
 #
 # 用法（PowerShell）：
 #   powershell -ExecutionPolicy Bypass -File setup\windows-follow.ps1
@@ -70,7 +70,7 @@ $found = (Invoke-Tool $gitleaks @('version')).Out.Trim()
 if ($found -ne $GitleaksVersion) { Stop-Follow "gitleaks $found at $gitleaks -> need $GitleaksVersion (setup\install-gitleaks.ps1)" 69 }
 foreach ($relative in @('.config\ai-agent\bin\sync.sh', '.config\ai-agent\sync.local.json')) {
     if (Test-Path (Join-Path $UserHome $relative)) {
-        Stop-Follow ("~/" + ($relative -replace '\\', '/') + ' exists, but native Windows cannot run the engine -> remove ~/.config/ai-agent; this host only follows ~/.claude (docs/wsl.md)') 65
+        Stop-Follow ("~/" + ($relative -replace '\\', '/') + ' exists: the engine is deployed on this host, so it syncs fully through Git Bash (docs/wsl.md section 8) -> use sh ~/.config/ai-agent/bin/sync.sh instead of the follower, or remove ~/.config/ai-agent to follow only') 65
     }
 }
 $located = Invoke-Tool $chezmoi @('source-path')

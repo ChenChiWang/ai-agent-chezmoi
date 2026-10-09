@@ -232,6 +232,14 @@ def make_private(path):
         raise OSError('private acl not applied: ' + str(path))
 
 
+def protect(path):
+    """上線時把參數檔或 plan_dir 設成只有自己能存取：POSIX 用 chmod 600／700，Windows 用 ACL。"""
+    if WINDOWS:
+        make_private(path)
+    else:
+        os.chmod(path, 0o700 if os.path.isdir(path) else 0o600)
+
+
 def private_directory_report(path):
     """doctor 的 plan_dir 檢查：(通過, 說明, 修正)。POSIX 要求正好 700。"""
     if WINDOWS:
@@ -749,6 +757,13 @@ def main():
             paths = [p for p in paths if skill_of(p)]
         if paths:
             print('\n'.join(paths))
+        return 0
+    if len(sys.argv) == 3 and sys.argv[1] == '--make-private':
+        # 上線用：把參數檔或 plan_dir 設成只有自己能存取（#15 W5）；路徑要存在、絕對、不是重導向
+        target = Path(sys.argv[2])
+        require(target.is_absolute() and not is_redirected(target) and target.exists())
+        protect(target)
+        print('OK: ' + str(target) + ' is private')
         return 0
     if len(sys.argv) == 3 and sys.argv[1] == '--validate-shared':
         decode_shared(Path(sys.argv[2]).read_bytes())
