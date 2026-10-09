@@ -108,11 +108,13 @@ def parse_sddl(text):
     return ACL_ALIASES.get(owner.group(1), owner.group(1)), aces
 
 
-def acl_private(descriptor, user):
-    """owner 是使用者，而且每個 allow ACE 的主體都是使用者、SYSTEM、Administrators 或 OWNER RIGHTS。
-    deny ACE 只會限制，不影響判定。"""
-    owner, aces = descriptor
-    return owner == user and all(kind not in ACL_ALLOW or sid in (user,) + ACL_TRUSTED for kind, _, _, sid in aces)
+def acl_private(descriptor, user, owner=None):
+    """owner 是使用者，或是這個程序建立新物件時會指定的 owner（提升權限的 Administrator 建立的檔案由
+    Administrators 群組擁有，例如 CI runner）；而且每個 allow ACE 的主體都是使用者、SYSTEM、Administrators
+    或 OWNER RIGHTS。deny ACE 只會限制，不影響判定。"""
+    actual, aces = descriptor
+    return actual in (user, owner or user) and all(kind not in ACL_ALLOW or sid in (user,) + ACL_TRUSTED
+                                                     for kind, _, _, sid in aces)
 
 
 def acl_foreign_writable(descriptor, user):
@@ -157,47 +159,61 @@ def security_descriptor(path):
 
 
 USER_SID = None
+OWNER_SID = None
 
 
-def current_user_sid():
-    """目前程序 token 的使用者 SID；只在 Windows 呼叫，結果快取。"""
-    global USER_SID
-    if USER_SID:
-        return USER_SID
+def token_sid(kind):
+    """目前程序 token 的 SID：kind 1 是 TokenUser（使用者），4 是 TokenOwner（新物件的預設 owner）。"""
     ctypes, wt, advapi32, kernel32 = windows_api()
     token = wt.HANDLE()
     if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), 0x8, ctypes.byref(token)):  # TOKEN_QUERY
         raise ctypes.WinError(ctypes.get_last_error())
     try:
         needed = wt.DWORD(0)
-        advapi32.GetTokenInformation(token, 1, None, 0, ctypes.byref(needed))  # TokenUser
+        advapi32.GetTokenInformation(token, kind, None, 0, ctypes.byref(needed))
         buffer = ctypes.create_string_buffer(needed.value)
-        if not advapi32.GetTokenInformation(token, 1, buffer, needed, ctypes.byref(needed)):
+        if not advapi32.GetTokenInformation(token, kind, buffer, needed, ctypes.byref(needed)):
             raise ctypes.WinError(ctypes.get_last_error())
+        # TOKEN_USER 與 TOKEN_OWNER 的第一個欄位都是 PSID
         sid = ctypes.cast(buffer, ctypes.POINTER(ctypes.c_void_p))[0]
         text = wt.LPWSTR()
         if not advapi32.ConvertSidToStringSidW(sid, ctypes.byref(text)):
             raise ctypes.WinError(ctypes.get_last_error())
         try:
-            USER_SID = text.value
+            return text.value
         finally:
             kernel32.LocalFree(text)
     finally:
         kernel32.CloseHandle(token)
+
+
+def current_user_sid():
+    """目前使用者的 SID；只在 Windows 呼叫，結果快取。"""
+    global USER_SID
+    if not USER_SID:
+        USER_SID = token_sid(1)
     return USER_SID
+
+
+def token_owner_sid():
+    """這個程序建立新檔案時會指定的 owner SID：一般是使用者，提升權限時是 Administrators。"""
+    global OWNER_SID
+    if not OWNER_SID:
+        OWNER_SID = token_sid(4)
+    return OWNER_SID
 
 
 def private_file(path, info):
     """擁有者是自己，而且 group／other 不可寫；Windows 看 owner 與 DACL。"""
     if WINDOWS:
-        return acl_private(security_descriptor(path), current_user_sid())
+        return acl_private(security_descriptor(path), current_user_sid(), token_owner_sid())
     return info.st_uid == os.getuid() and not info.st_mode & 0o022
 
 
 def private_mode(path, mode):
     """只有擁有者能存取（plan 檔、manifest）；Windows 看 owner 與 DACL。"""
     if WINDOWS:
-        return acl_private(security_descriptor(path), current_user_sid())
+        return acl_private(security_descriptor(path), current_user_sid(), token_owner_sid())
     return mode & 0o077 == 0
 
 
@@ -232,7 +248,7 @@ def make_private(path):
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
         if run.returncode != 0:
             raise OSError('icacls failed: ' + str(path))
-    if not acl_private(security_descriptor(path), current_user_sid()):
+    if not acl_private(security_descriptor(path), current_user_sid(), token_owner_sid()):
         raise OSError('private acl not applied: ' + str(path))
 
 
@@ -247,7 +263,7 @@ def protect(path):
 def private_directory_report(path):
     """doctor 的 plan_dir 檢查：(通過, 說明, 修正)。POSIX 要求正好 700。"""
     if WINDOWS:
-        ok = acl_private(security_descriptor(path), current_user_sid())
+        ok = acl_private(security_descriptor(path), current_user_sid(), token_owner_sid())
         return ok, ' acl private' if ok else ' acl open to other principals', '' if ok else private_hint(path)
     mode = stat.S_IMODE(os.stat(path).st_mode)
     return mode == 0o700, ' mode %o' % mode, '' if mode == 0o700 else 'chmod 700 ' + str(path)
