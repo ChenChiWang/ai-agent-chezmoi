@@ -280,6 +280,13 @@ def private_directory_report(path):
     return mode == 0o700, ' mode %o' % mode, '' if mode == 0o700 else 'chmod 700 ' + str(path)
 
 
+def set_mode(fd, mode):
+    """寫入時設定檔案模式。Windows 沒有 mode bits（os.fchmod 要 3.13 才有），私有檔案由 make_private 的
+    ACL 處理，這裡不做事。"""
+    if not WINDOWS:
+        os.fchmod(fd, mode)
+
+
 def open_directory(path):
     """取得目錄的檔案描述子供 fsync 用；Windows 沒有目錄 fsync，回傳 None。"""
     return None if WINDOWS else os.open(path, os.O_RDONLY | os.O_DIRECTORY)
