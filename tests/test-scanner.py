@@ -459,7 +459,8 @@ class PlatformTests(unittest.TestCase):
         target.write_bytes(b"{}")
         me = API["current_user_sid"]()
         self.assertTrue(me.startswith("S-1-5-21-"))
-        self.assertEqual(API["security_descriptor"](target)[0], me)
+        # 一般使用者建立的檔案 owner 是自己；提升權限的 Administrator（CI runner）是 Administrators 群組
+        self.assertIn(API["security_descriptor"](target)[0], (me, API["token_owner_sid"]()))
         subprocess.run(["icacls", str(target), "/grant", "*S-1-1-0:W"], check=True, capture_output=True)
         self.assertFalse(API["private_file"](target, target.stat()))
         self.assertTrue(API["foreign_writable"](target, target.stat()))
