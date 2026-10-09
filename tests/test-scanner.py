@@ -333,6 +333,9 @@ class PlatformTests(unittest.TestCase):
                 self.assertFalse(API["private_mode"](Path(__file__), 0o600))
                 self.assertFalse(API["private_file"](Path(__file__), Path(__file__).stat()))
             self.assertIsNone(API["open_directory"](Path(self.temp.name)))
+            with mock.patch("os.fchmod", create=True) as fchmod:
+                API["set_mode"](3, 0o600)
+            fchmod.assert_not_called()
             self.assertEqual(API["scanner_command"](Path("C:\\s.py")), [sys.executable, "C:\\s.py"])
             # replace：暫時被佔用時重試，持續失敗就拋出
             with mock.patch("os.replace", side_effect=[PermissionError(), PermissionError(), None]) as replaced, \

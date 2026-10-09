@@ -231,7 +231,7 @@ def atomic(path, value):
         with os.fdopen(fd, 'wb') as f:
             f.write(value[0])
             f.flush()
-            os.fchmod(f.fileno(), value[1])
+            api.set_mode(f.fileno(), value[1])
             os.fsync(f.fileno())
         api.replace(name, path)
         if value[1] & 0o077 == 0:
