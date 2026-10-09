@@ -33,7 +33,7 @@ jobs:
       - name: Run tests
         run: sh .github/ci/run-tests.sh
 
-  # 原生 Windows 不跑引擎，只驗證跟隨模式（setup/windows-follow.ps1）；以 Windows PowerShell 5.1 執行
+  # 原生 Windows 的跟隨模式（setup/windows-follow.ps1）；以 Windows PowerShell 5.1 執行
   windows-follow:
     name: windows-2025 (native follower)
     runs-on: windows-2025
