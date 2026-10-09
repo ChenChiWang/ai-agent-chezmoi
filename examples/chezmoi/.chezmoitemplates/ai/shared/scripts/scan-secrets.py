@@ -359,9 +359,11 @@ def umask_applies():
     return not WINDOWS
 
 
-def config_refused(path, label):
-    """參數檔不被接受時的標籤；Windows 補上把它設成私有的指令。"""
-    return label + '; ' + private_hint(path) if WINDOWS else label
+def config_refused(path, label, reason=''):
+    """參數檔不被接受時的標籤；Windows 補上原因與把它設成私有的指令。"""
+    if not WINDOWS:
+        return label
+    return label + ('; ' + reason if reason else '') + '; ' + private_hint(path)
 
 
 def skill_names(names):
@@ -547,8 +549,12 @@ def load_config(path):
     if not p.is_absolute() or is_redirected(p):
         raise ValueError('config path')
     info = p.stat()
-    if not stat.S_ISREG(info.st_mode) or not private_file(p, info) or info.st_size > 65536:
+    if not stat.S_ISREG(info.st_mode) or info.st_size > 65536:
         raise ValueError('config file')
+    if not private_file(p, info):
+        # Windows 說明是哪個主體讓它不私有（只有 SID 與權限遮罩）；POSIX 的訊息不變
+        raise ValueError('config file' + (': owner=%s aces=%s user=%s token_owner=%s' % (
+            *security_descriptor(p), current_user_sid(), token_owner_sid()) if WINDOWS else ''))
     doc = read_json(p)
     if type(doc) is not dict or not set(doc) <= set(CONFIG_KEYS):
         raise ValueError('config keys')
