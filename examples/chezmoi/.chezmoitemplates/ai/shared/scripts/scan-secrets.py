@@ -341,6 +341,15 @@ def child_environment(home, path=None):
     return env
 
 
+def utf8_console():
+    """Windows 的主控台與管線預設用在地編碼（cp1252、cp950），印出含非 ASCII 的路徑會讓 print 失敗；
+    改成 UTF-8，無法編碼的字元以 ? 代替。POSIX 不動。"""
+    if WINDOWS:
+        for stream in (sys.stdout, sys.stderr):
+            if hasattr(stream, 'reconfigure'):
+                stream.reconfigure(encoding='utf-8', errors='replace')
+
+
 def scanner_command(path):
     """scanner 以執行檔身分呼叫；Windows 沒有 shebang，交給目前的 Python 直譯器。"""
     return [sys.executable, str(path)] if WINDOWS else [str(path)]
@@ -789,6 +798,7 @@ def scan(snapshot):
 
 def main():
     os.umask(0o077)
+    utf8_console()
     if len(sys.argv) in (5, 6) and sys.argv[1] == '--validate-layout':
         try:
             validate_layout(sys.argv[2], sys.argv[3], sys.argv[4], source_profile=sys.argv[5] if len(sys.argv) == 6 else None)

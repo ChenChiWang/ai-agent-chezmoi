@@ -464,6 +464,7 @@ class Migration(w.Engine):
 
 def main():
     os.umask(0o077)
+    a.utf8_console()
     parser = w.Parser()
     parser.add_argument('command', choices=('plan', 'apply', 'rollback', 'verify'))
     for name in ('source', 'destination', 'backup', 'branch'):

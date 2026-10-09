@@ -1628,6 +1628,7 @@ def main():
 
 
 def cli():
+    api.utf8_console()
     if len(sys.argv) > 1 and sys.argv[1] == 'status':
         # status 沿用 sync.sh 的輸出合約：只有報告行、標籤與 exit code，沒有 DIAGNOSTIC 行
         try:
