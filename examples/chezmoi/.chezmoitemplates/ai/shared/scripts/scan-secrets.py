@@ -108,18 +108,26 @@ def parse_sddl(text):
     return ACL_ALIASES.get(owner.group(1), owner.group(1)), aces
 
 
+def domain_alias(sid, user):
+    """SDDL 的網域相對別名：LA 是本機 Administrator 帳號（RID 500）、LG 是 Guest（501），只有展開成
+    目前使用者網域下的 SID 才能和使用者比對（CI runner 就是以 Administrator 帳號執行）。"""
+    domain = user.rsplit('-', 1)[0]
+    return {'LA': domain + '-500', 'LG': domain + '-501'}.get(sid, sid)
+
+
 def acl_private(descriptor, user, owner=None):
     """owner 是使用者，或是這個程序建立新物件時會指定的 owner（提升權限的 Administrator 建立的檔案由
     Administrators 群組擁有，例如 CI runner）；而且每個 allow ACE 的主體都是使用者、SYSTEM、Administrators
     或 OWNER RIGHTS。deny ACE 只會限制，不影響判定。"""
     actual, aces = descriptor
-    return actual in (user, owner or user) and all(kind not in ACL_ALLOW or sid in (user,) + ACL_TRUSTED
-                                                     for kind, _, _, sid in aces)
+    return (domain_alias(actual, user) in (user, owner or user)
+            and all(kind not in ACL_ALLOW or domain_alias(sid, user) in (user,) + ACL_TRUSTED
+                    for kind, _, _, sid in aces))
 
 
 def acl_foreign_writable(descriptor, user):
     """使用者、SYSTEM、Administrators、OWNER RIGHTS 以外的主體持有寫入類權限；POSIX 的 group/other 可寫。"""
-    return any(kind in ACL_ALLOW and sid not in (user,) + ACL_TRUSTED and mask & ACL_WRITE
+    return any(kind in ACL_ALLOW and domain_alias(sid, user) not in (user,) + ACL_TRUSTED and mask & ACL_WRITE
                for kind, _, mask, sid in descriptor[1])
 
 
