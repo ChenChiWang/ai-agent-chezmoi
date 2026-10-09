@@ -22,8 +22,13 @@ Current state only. Older round-by-round records are archived in
   environment from the platform layer, shell shims get a `.cmd` wrapper run by Git Bash
   (a `git` shim cannot be intercepted that way, so the synthetic-HEAD scenario stays POSIX),
   POSIX-only assertions are guarded, and a Windows-only test uses real ACLs and a real
-  junction. The native job runs it after the engine loop. `test-write.py` and the other
-  POSIX files are not ported yet.
+  junction. `tests/test-write.py` runs natively too (54 of 59; five tests that depend on
+  chmod, symlinks or the `/tmp` alias are skipped with their reason): the fixture takes its
+  environment from the platform layer, state keys use POSIX separators, read-only Git
+  objects are unlocked before removal, and a parameter file or deployed file is loosened
+  through ACLs. `doctor` accepts a local repository path as a remote on Windows. The native
+  job runs both files after the engine loop; `test-layout.py`, `test-migration.py`,
+  `test-offline-status.py` and the shell tests stay POSIX.
 - **Native engine CI** (#15 W6a): `.github/ci/test-windows-engine.py` runs the fixture loop
   natively with 70 assertions (refusal of an open parameter file with its `icacls` hint,
   `--make-private`, `doctor`, `status`, `check`, `plan push`, `push` with the executable bits
