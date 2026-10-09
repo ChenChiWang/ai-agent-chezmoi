@@ -248,8 +248,11 @@ def make_private(path):
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
         if run.returncode != 0:
             raise OSError('icacls failed: ' + str(path))
-    if not acl_private(security_descriptor(path), current_user_sid(), token_owner_sid()):
-        raise OSError('private acl not applied: ' + str(path))
+    descriptor = security_descriptor(path)
+    if not acl_private(descriptor, current_user_sid(), token_owner_sid()):
+        # 只含 SID 與權限遮罩，沒有檔案內容；CI 等看不到桌面的環境靠這行判斷原因
+        raise OSError('private acl not applied: %s owner=%s aces=%s user=%s token_owner=%s'
+                      % (path, descriptor[0], descriptor[1], current_user_sid(), token_owner_sid()))
 
 
 def protect(path):
