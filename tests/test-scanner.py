@@ -376,6 +376,13 @@ class PlatformTests(unittest.TestCase):
         # 提升權限的程序建立的檔案由 Administrators 擁有：token owner 是 BA 時算自己的，否則不算
         elevated = API["parse_sddl"]("O:BAD:PAI(A;;FA;;;BA)(A;;FA;;;SY)(A;;FA;;;" + self.ME + ")")
         self.assertTrue(private(elevated, self.ME, "S-1-5-32-544"))
+        # LA 是網域相對的本機 Administrator 帳號：使用者就是它（RID 500）時算自己，否則是別人
+        admin = "S-1-5-21-1643835476-1616584234-1346609752-500"
+        runner = API["parse_sddl"]("O:BAD:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;FA;;;LA)")
+        self.assertTrue(private(runner, admin, "S-1-5-32-544"))
+        self.assertFalse(private(runner, self.ME, "S-1-5-32-544"))
+        self.assertTrue(writable(runner, self.ME))
+        self.assertFalse(writable(runner, admin))
         self.assertFalse(private(elevated, self.ME, self.ME))
         self.assertFalse(private(elevated, self.ME))
         self.assertTrue(writable(API["parse_sddl"]("O:" + self.ME + "D:(A;;FA;;;SY)(A;;0x120116;;;" + self.OTHER + ")"), self.ME))
