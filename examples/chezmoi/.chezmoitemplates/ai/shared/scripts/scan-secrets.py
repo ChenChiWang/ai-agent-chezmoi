@@ -115,12 +115,14 @@ def domain_alias(sid, user):
     return {'LA': domain + '-500', 'LG': domain + '-501'}.get(sid, sid)
 
 
-def acl_private(descriptor, user, owner=None):
-    """owner 是使用者，或是這個程序建立新物件時會指定的 owner（提升權限的 Administrator 建立的檔案由
-    Administrators 群組擁有，例如 CI runner）；而且每個 allow ACE 的主體都是使用者、SYSTEM、Administrators
-    或 OWNER RIGHTS。deny ACE 只會限制，不影響判定。"""
+def acl_private(descriptor, user, owner=None, elevated=False):
+    """owner 是使用者、是這個程序建立新物件時會指定的 owner，或在 token 有提升權限時是 Administrators 群組
+    （提升權限的程序建立的檔案由它擁有，像 POSIX 的 root；MSYS 啟動的子程序會把預設 owner 改回使用者，
+    所以不能只看 token owner）；而且每個 allow ACE 的主體都是使用者、SYSTEM、Administrators 或 OWNER RIGHTS。
+    deny ACE 只會限制，不影響判定。"""
     actual, aces = descriptor
-    return (domain_alias(actual, user) in (user, owner or user)
+    owners = (user, owner or user) + (ACL_TRUSTED[1:2] if elevated else ())
+    return (domain_alias(actual, user) in owners
             and all(kind not in ACL_ALLOW or domain_alias(sid, user) in (user,) + ACL_TRUSTED
                     for kind, _, _, sid in aces))
 
@@ -168,6 +170,7 @@ def security_descriptor(path):
 
 USER_SID = None
 OWNER_SID = None
+ELEVATED = None
 
 
 def token_sid(kind):
@@ -195,6 +198,24 @@ def token_sid(kind):
         kernel32.CloseHandle(token)
 
 
+def token_elevated():
+    """目前程序的 token 是否有提升權限（TokenElevation）；只在 Windows 呼叫，結果快取。"""
+    global ELEVATED
+    if ELEVATED is None:
+        ctypes, wt, advapi32, kernel32 = windows_api()
+        token = wt.HANDLE()
+        if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), 0x8, ctypes.byref(token)):  # TOKEN_QUERY
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            value, needed = wt.DWORD(0), wt.DWORD(0)
+            if not advapi32.GetTokenInformation(token, 20, ctypes.byref(value), 4, ctypes.byref(needed)):  # TokenElevation
+                raise ctypes.WinError(ctypes.get_last_error())
+            ELEVATED = bool(value.value)
+        finally:
+            kernel32.CloseHandle(token)
+    return ELEVATED
+
+
 def current_user_sid():
     """目前使用者的 SID；只在 Windows 呼叫，結果快取。"""
     global USER_SID
@@ -214,14 +235,14 @@ def token_owner_sid():
 def private_file(path, info):
     """擁有者是自己，而且 group／other 不可寫；Windows 看 owner 與 DACL。"""
     if WINDOWS:
-        return acl_private(security_descriptor(path), current_user_sid(), token_owner_sid())
+        return acl_private(security_descriptor(path), current_user_sid(), token_owner_sid(), token_elevated())
     return info.st_uid == os.getuid() and not info.st_mode & 0o022
 
 
 def private_mode(path, mode):
     """只有擁有者能存取（plan 檔、manifest）；Windows 看 owner 與 DACL。"""
     if WINDOWS:
-        return acl_private(security_descriptor(path), current_user_sid(), token_owner_sid())
+        return acl_private(security_descriptor(path), current_user_sid(), token_owner_sid(), token_elevated())
     return mode & 0o077 == 0
 
 
@@ -257,10 +278,10 @@ def make_private(path):
         if run.returncode != 0:
             raise OSError('icacls failed: ' + str(path))
     descriptor = security_descriptor(path)
-    if not acl_private(descriptor, current_user_sid(), token_owner_sid()):
+    if not acl_private(descriptor, current_user_sid(), token_owner_sid(), token_elevated()):
         # 只含 SID 與權限遮罩，沒有檔案內容；CI 等看不到桌面的環境靠這行判斷原因
-        raise OSError('private acl not applied: %s owner=%s aces=%s user=%s token_owner=%s'
-                      % (path, descriptor[0], descriptor[1], current_user_sid(), token_owner_sid()))
+        raise OSError('private acl not applied: %s owner=%s aces=%s user=%s token_owner=%s elevated=%s'
+                      % (path, descriptor[0], descriptor[1], current_user_sid(), token_owner_sid(), token_elevated()))
 
 
 def protect(path):
@@ -274,7 +295,7 @@ def protect(path):
 def private_directory_report(path):
     """doctor 的 plan_dir 檢查：(通過, 說明, 修正)。POSIX 要求正好 700。"""
     if WINDOWS:
-        ok = acl_private(security_descriptor(path), current_user_sid(), token_owner_sid())
+        ok = acl_private(security_descriptor(path), current_user_sid(), token_owner_sid(), token_elevated())
         return ok, ' acl private' if ok else ' acl open to other principals', '' if ok else private_hint(path)
     mode = stat.S_IMODE(os.stat(path).st_mode)
     return mode == 0o700, ' mode %o' % mode, '' if mode == 0o700 else 'chmod 700 ' + str(path)
@@ -553,8 +574,8 @@ def load_config(path):
         raise ValueError('config file')
     if not private_file(p, info):
         # Windows 說明是哪個主體讓它不私有（只有 SID 與權限遮罩）；POSIX 的訊息不變
-        raise ValueError('config file' + (': owner=%s aces=%s user=%s token_owner=%s' % (
-            *security_descriptor(p), current_user_sid(), token_owner_sid()) if WINDOWS else ''))
+        raise ValueError('config file' + (': owner=%s aces=%s user=%s token_owner=%s elevated=%s' % (
+            *security_descriptor(p), current_user_sid(), token_owner_sid(), token_elevated()) if WINDOWS else ''))
     doc = read_json(p)
     if type(doc) is not dict or not set(doc) <= set(CONFIG_KEYS):
         raise ValueError('config keys')
