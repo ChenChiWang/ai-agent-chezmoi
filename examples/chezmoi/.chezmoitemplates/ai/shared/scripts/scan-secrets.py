@@ -341,6 +341,18 @@ def child_environment(home, path=None):
     return env
 
 
+SSH_IDENTITY_FILES = ('id_rsa', 'id_ecdsa', 'id_ecdsa_sk', 'id_ed25519', 'id_ed25519_sk', 'id_dsa')
+
+
+def ssh_identity_files(ssh_dir):
+    """使用者的預設 SSH 身分檔（#47）。POSIX 的 OpenSSH 從 passwd 取家目錄，隔離的 HOME 不影響它，
+    所以回空、指令不變；Git for Windows 的 MSYS ssh 用 $HOME 找 ~/.ssh，在隔離環境下找不到任何金鑰，
+    Windows 回真實 ~/.ssh 裡存在的預設身分檔，由呼叫端以 IdentityFile 指定。"""
+    if not WINDOWS:
+        return []
+    return [str(ssh_dir / name) for name in SSH_IDENTITY_FILES if (ssh_dir / name).is_file()]
+
+
 def utf8_console():
     """Windows 的主控台與管線預設用在地編碼（cp1252、cp950），印出含非 ASCII 的路徑會讓 print 失敗；
     改成 UTF-8，無法編碼的字元以 ? 代替。POSIX 不動。"""

@@ -349,11 +349,16 @@ class Engine:
             # No user SSH config, ProxyCommand, prompts or host-key writes. The agent and
             # the user's default identity files (~/.ssh/id_*) are both accepted; a
             # passphrase-protected file without an agent fails closed under BatchMode.
-            known = Path(os.path.expanduser('~/.ssh/known_hosts'))
+            # Windows names the identity files explicitly: MSYS ssh resolves ~ through
+            # the isolated HOME and would find none (#47); POSIX adds nothing.
+            ssh_dir = Path(os.path.expanduser('~/.ssh'))
+            known = ssh_dir / 'known_hosts'
             import shlex
             env['GIT_SSH_COMMAND'] = ('ssh -F /dev/null -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes '
                                       '-o UpdateHostKeys=no '
-                                      '-o UserKnownHostsFile=' + shlex.quote(str(known)))
+                                      '-o UserKnownHostsFile=' + shlex.quote(str(known))
+                                      + ''.join(' -o IdentityFile=' + shlex.quote(identity)
+                                                for identity in api.ssh_identity_files(ssh_dir)))
         return self.call(['git', '--no-lazy-fetch', '--git-dir=' + str(self.iso), *args], data, env,
                          71 if network else 70, 'NETWORK_ERROR' if network else 'GIT_ERROR')
 
