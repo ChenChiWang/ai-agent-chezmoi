@@ -3,6 +3,23 @@
 Current state only. Older round-by-round records are archived in
 [history/implementation-status-2026-09-25.md](history/implementation-status-2026-09-25.md).
 
+## 2026-10-12 — first native Windows bring-up on a real private source
+
+- **SSH identity files** (#47): the first `check` against a real SSH remote on native
+  Windows returned `NETWORK_ERROR` while `doctor` reported `ssh_auth` OK. The engine
+  runs Git in an isolated child environment whose `HOME` and `USERPROFILE` point at a
+  scratch directory; OpenSSH on POSIX takes the home directory from `passwd`, but the
+  MSYS `ssh` of Git for Windows resolves `~` through `HOME` and found no key. The
+  platform layer now lists the default identity files that exist in the user's
+  `~/.ssh` on Windows (nothing on POSIX), and `GIT_SSH_COMMAND` names them with
+  `IdentityFile`; the POSIX command string is unchanged.
+- **Real machine**: Windows 11, path 4A against the maintainer's private source and
+  GitHub remote, profile `claude-codex`, writer `claude`: `preflight` 0 fail, `doctor`
+  17 ok, `status` reports only the intended source edits, `check` `UP_TO_DATE`. The
+  first push from native Windows is the next step. `doctor` probes SSH in the user's
+  environment, so it cannot see this class of failure; probing through the isolated
+  environment is a follow-up.
+
 ## 2026-10-09 — native Windows plan: W1 and W2
 
 - **Platform layer** (#33, W2): the temporary root, symlink test, path format, owner
