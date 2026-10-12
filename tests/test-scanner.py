@@ -312,6 +312,11 @@ class PlatformTests(unittest.TestCase):
         self.assertFalse(API["absolute_path"]("relative"))
         self.assertEqual(API["child_environment"](Path("/h"), "/bin"), {"PATH": "/bin", "HOME": "/h", "LC_ALL": "C"})
         self.assertEqual(API["child_environment"](Path("/h"))["PATH"], os.defpath)
+        # OpenSSH 自己會從 passwd 的家目錄找身分檔：POSIX 不指定，GIT_SSH_COMMAND 不變
+        ssh_dir = Path(self.temp.name) / "ssh"
+        ssh_dir.mkdir()
+        (ssh_dir / "id_ed25519").write_bytes(b"key")
+        self.assertEqual(API["ssh_identity_files"](ssh_dir), [])
         self.assertTrue(API["private_mode"](Path("/x"), 0o600))
         self.assertFalse(API["private_mode"](Path("/x"), 0o640))
         private = Path(self.temp.name) / "private"
@@ -349,6 +354,16 @@ class PlatformTests(unittest.TestCase):
             self.assertEqual(env, {"PATH": "C:\\bin", "HOME": "C:\\h", "LC_ALL": "C", "USERPROFILE": "C:\\h",
                                    "SystemRoot": "C:\\Windows", "SystemDrive": "C:", "PATHEXT": ".EXE",
                                    "TEMP": "C:\\t", "TMP": "C:\\t", "COMSPEC": "cmd.exe"})
+            # MSYS ssh 在隔離的 HOME 下找不到 ~/.ssh：回真實目錄裡存在的預設身分檔，照 ssh(1) 的順序，
+            # 只有檔案算數，其他名字與目錄略過（#47）
+            ssh_dir = Path(self.temp.name) / "ssh"
+            ssh_dir.mkdir()
+            self.assertEqual(API["ssh_identity_files"](ssh_dir), [])
+            for name in ("id_ed25519", "id_rsa", "id_ed25519.pub", "config", "known_hosts"):
+                (ssh_dir / name).write_bytes(b"x")
+            (ssh_dir / "id_ecdsa").mkdir()
+            self.assertEqual(API["ssh_identity_files"](ssh_dir), [str(ssh_dir / "id_rsa"), str(ssh_dir / "id_ed25519")])
+            self.assertEqual(API["ssh_identity_files"](Path(self.temp.name) / "missing"), [])
             # 做不到等價的擁有者與權限檢查：一律不通過，不略過
             # 做不到的判定不會默默通過：Windows 分支要讀 ACL，這裡給它一個開放的描述子
             with mock.patch.dict(API["replace"].__globals__, USER_SID=self.ME, OWNER_SID=self.ME, ELEVATED=False,
